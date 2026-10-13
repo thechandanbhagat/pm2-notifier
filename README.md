@@ -2,31 +2,30 @@
 
 A PM2 module for server operators that sends sustained CPU, restart, stop, and crash alerts to any combination of Teams, Slack, Discord, and JSON webhooks.
 
+[npm package](https://www.npmjs.com/package/@thechandanbhagat/pm2-notifier) · [Releases](https://github.com/thechandanbhagat/pm2-notifier/releases)
+
 **Owner:** Project maintainers · **Last reviewed:** 2026-10-13 · **Review by:** 2027-01-13 or the next release.
 
 ## Quick start
 
-These steps target Linux servers with PM2 already managing your applications. You need Node.js 22 or newer, npm, and Git. Run PM2 commands as the same OS user and with the same `PM2_HOME` as those applications.
+These steps target Linux servers with PM2 already managing your applications. You need Node.js 22 or newer and npm. Run PM2 commands as the same OS user and with the same `PM2_HOME` as those applications.
 
-### 1. Clone and package
+### 1. Install the module
 
 ```bash
-git clone https://github.com/thechandanbhagat/pm2-notifier.git
-cd pm2-notifier
-npm ci
-mkdir -p excluded
-npm pack --pack-destination excluded
+pm2 install @thechandanbhagat/pm2-notifier
+NOTIFIER_PACKAGE_DIR="${PM2_HOME:-$HOME/.pm2}/modules/@thechandanbhagat/pm2-notifier/node_modules/@thechandanbhagat/pm2-notifier"
 ```
 
-`npm pack` builds the TypeScript code and bundles production dependencies. Version `0.1.0` produces `excluded/pm2-notifier-0.1.0.tgz`; use the filename printed by `npm pack` for other versions.
+The module stays idle until you set its configuration path. Keep `NOTIFIER_PACKAGE_DIR` defined for the commands below; it points to the package installed by PM2.
 
 ### 2. Configure your webhook
 
-Keep configuration and credentials outside the checkout:
+Keep configuration and credentials outside the installed package:
 
 ```bash
 sudo install -d -m 750 -o "$(id -un)" -g "$(id -gn)" /etc/pm2-notifier
-install -m 600 examples/notifier.config.json /etc/pm2-notifier/config.json
+install -m 600 "$NOTIFIER_PACKAGE_DIR/examples/notifier.config.json" /etc/pm2-notifier/config.json
 touch /etc/pm2-notifier/notifier.env
 chmod 600 /etc/pm2-notifier/notifier.env
 ```
@@ -44,21 +43,20 @@ For Slack, Discord, or a custom webhook, update `destinations` and `routes` in `
 Validate the files, then send a real test notification to your Teams channel:
 
 ```bash
-node dist/cli.js validate --config /etc/pm2-notifier/config.json --env-file /etc/pm2-notifier/notifier.env
-node dist/cli.js test --config /etc/pm2-notifier/config.json --env-file /etc/pm2-notifier/notifier.env --destination teams-primary
+node "$NOTIFIER_PACKAGE_DIR/dist/cli.js" validate --config /etc/pm2-notifier/config.json --env-file /etc/pm2-notifier/notifier.env
+node "$NOTIFIER_PACKAGE_DIR/dist/cli.js" test --config /etc/pm2-notifier/config.json --env-file /etc/pm2-notifier/notifier.env --destination teams-primary
 ```
 
 If you changed providers, replace `teams-primary` with your enabled destination ID.
 
-### 4. Install and start
+### 4. Start monitoring
 
-Install the archive and set `envFile` before `configPath` so credentials are available when monitoring starts:
+Set `envFile` before `configPath` so credentials are available when monitoring starts:
 
 ```bash
-pm2 install "$(pwd)/excluded/pm2-notifier-0.1.0.tgz"
-pm2 set pm2-notifier:envFile /etc/pm2-notifier/notifier.env
-pm2 set pm2-notifier:configPath /etc/pm2-notifier/config.json
-pm2 logs pm2-notifier --lines 50
+pm2 set @thechandanbhagat/pm2-notifier:envFile /etc/pm2-notifier/notifier.env
+pm2 set @thechandanbhagat/pm2-notifier:configPath /etc/pm2-notifier/config.json
+pm2 logs @thechandanbhagat/pm2-notifier --lines 50
 ```
 
 Each `pm2 set` restarts the module. Check the logs for `Notifier monitoring started`.
@@ -95,6 +93,8 @@ Generic destinations support HTTPS POST, custom JSON bodies, and static headers 
 ## Development
 
 ```bash
+git clone https://github.com/thechandanbhagat/pm2-notifier.git
+cd pm2-notifier
 npm ci
 npm run check
 npm test
@@ -107,8 +107,12 @@ On Linux or WSL Linux, run the real PM2 smoke test:
 npm run test:integration
 ```
 
-It installs the module in an isolated temporary PM2 home, sends alerts to a local receiver, and cleans up its fixture processes and files. The test refuses to run on Windows because PM2 uses shared named pipes there.
+It installs the scoped module from a loopback npm registry in an isolated temporary PM2 home, sends alerts to a local receiver, and cleans up its fixture processes and files. The test refuses to run on Windows because PM2 uses shared named pipes there.
 
-For temporary local module development, `pm2 install .` runs the checkout with file watching. PM2's local-directory installation does not register the module for daemon startup, and `pm2 save` excludes modules. Use the packaged installation above for a server that must recover after reboot.
+For temporary local module development, `pm2 install .` runs the checkout with file watching. PM2's local-directory installation does not register the module for daemon startup, and `pm2 save` excludes modules. Use the npm installation above for a server that must recover after reboot.
 
 The module is written in TypeScript. Update tests and these documents when behavior or configuration changes. Provider tests use local fixtures; verify your actual webhook using the CLI before relying on production notifications.
+
+## License
+
+[MIT](LICENSE).

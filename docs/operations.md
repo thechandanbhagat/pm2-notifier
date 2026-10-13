@@ -2,7 +2,7 @@
 
 How to configure and operate the notifier on a Linux server running PM2.
 
-**Owner:** Project maintainers · **Last reviewed:** 2026-09-14 · **Review by:** 2026-12-14 or a provider setup change.
+**Owner:** Project maintainers · **Last reviewed:** 2026-10-13 · **Review by:** 2027-01-13 or a provider setup change.
 
 ## Create webhook destinations
 
@@ -58,10 +58,11 @@ The receiver must accept JSON POST requests. Custom request signatures, automati
 3. Validate, send a direct test to that destination, then restart the notifier:
 
 ```bash
-node dist/cli.js validate --config /etc/pm2-notifier/config.json --env-file /etc/pm2-notifier/notifier.env
-node dist/cli.js test --config /etc/pm2-notifier/config.json --env-file /etc/pm2-notifier/notifier.env --destination slack-operations
-pm2 restart pm2-notifier
-pm2 logs pm2-notifier --lines 50
+NOTIFIER_PACKAGE_DIR="${PM2_HOME:-$HOME/.pm2}/modules/@thechandanbhagat/pm2-notifier/node_modules/@thechandanbhagat/pm2-notifier"
+node "$NOTIFIER_PACKAGE_DIR/dist/cli.js" validate --config /etc/pm2-notifier/config.json --env-file /etc/pm2-notifier/notifier.env
+node "$NOTIFIER_PACKAGE_DIR/dist/cli.js" test --config /etc/pm2-notifier/config.json --env-file /etc/pm2-notifier/notifier.env --destination slack-operations
+pm2 restart @thechandanbhagat/pm2-notifier
+pm2 logs @thechandanbhagat/pm2-notifier --lines 50
 ```
 
 A direct test bypasses route filters. To test routing as well, run the command without `--destination`; it sends `notifier.test`, severity `info`, with host scope to matching enabled destinations. Neither test simulates CPU saturation or process failures.
@@ -70,7 +71,7 @@ JSON/env files are read at startup. `pm2 set` changes module settings and restar
 
 ## Enable startup after reboot
 
-Install the `.tgz` package as described in the [quick start](../README.md#quick-start). This registers the module under `PM2_HOME/modules` so PM2 can start it when its daemon starts. The local-development command `pm2 install .` does not register it this way.
+Install the npm package with `pm2 install @thechandanbhagat/pm2-notifier` as described in the [quick start](../README.md#quick-start). This registers the module under `PM2_HOME/modules` so PM2 can start it when its daemon starts. The local-development command `pm2 install .` does not register it this way.
 
 Run PM2 commands as the application owner with the same `PM2_HOME`. If PM2 startup is not already configured:
 
@@ -88,30 +89,27 @@ pm2 save
 
 ## Upgrade the installed module
 
-When upgrading from a previous module name, stop that module before installing `pm2-notifier` and set `envFile` and `configPath` again under the new name to avoid duplicate alerts. After verifying delivery from the new module, uninstall the previous module so it cannot return after a daemon restart.
+When upgrading from a previous module name, stop that module before installing `@thechandanbhagat/pm2-notifier` and set `envFile` and `configPath` again under the new name to avoid duplicate alerts. After verifying delivery from the new module, uninstall the previous module so it cannot return after a daemon restart.
 
-From the checkout containing the version you want to install, rebuild and package its tested dependencies:
-
-```bash
-npm ci
-npm run check
-npm test
-npm run build
-mkdir -p excluded
-npm pack --pack-destination excluded
-node dist/cli.js validate --config /etc/pm2-notifier/config.json --env-file /etc/pm2-notifier/notifier.env
-```
-
-Install the archive named by `npm pack`; for version `0.1.0`:
+Review the [release notes](https://github.com/thechandanbhagat/pm2-notifier/releases), then validate your existing configuration with the installed CLI:
 
 ```bash
-pm2 install "$(pwd)/excluded/pm2-notifier-0.1.0.tgz"
-pm2 set pm2-notifier:envFile /etc/pm2-notifier/notifier.env
-pm2 set pm2-notifier:configPath /etc/pm2-notifier/config.json
-pm2 logs pm2-notifier --lines 50
+NOTIFIER_PACKAGE_DIR="${PM2_HOME:-$HOME/.pm2}/modules/@thechandanbhagat/pm2-notifier/node_modules/@thechandanbhagat/pm2-notifier"
+node "$NOTIFIER_PACKAGE_DIR/dist/cli.js" validate --config /etc/pm2-notifier/config.json --env-file /etc/pm2-notifier/notifier.env
 ```
 
-Use the new version's filename when it changes. Packaging bundles the built code and production dependencies, including resolved dependency fixes; no package publication is needed. The JSON and env files stay outside the package. Reinstallation restarts the module, resetting CPU/lifecycle observation state; in-memory queued alerts can be lost during restart. Confirm `Notifier monitoring started` and send a direct CLI test to verify the receiver after an upgrade.
+Install the latest published version and apply the external file settings:
+
+```bash
+pm2 install @thechandanbhagat/pm2-notifier
+pm2 set @thechandanbhagat/pm2-notifier:envFile /etc/pm2-notifier/notifier.env
+pm2 set @thechandanbhagat/pm2-notifier:configPath /etc/pm2-notifier/config.json
+pm2 logs @thechandanbhagat/pm2-notifier --lines 50
+node "$NOTIFIER_PACKAGE_DIR/dist/cli.js" validate --config /etc/pm2-notifier/config.json --env-file /etc/pm2-notifier/notifier.env
+node "$NOTIFIER_PACKAGE_DIR/dist/cli.js" test --config /etc/pm2-notifier/config.json --env-file /etc/pm2-notifier/notifier.env --destination teams-primary
+```
+
+Replace `teams-primary` with an enabled destination ID if you use another provider. The JSON and env files stay outside the package. Reinstallation restarts the module, resetting CPU/lifecycle observation state; in-memory queued alerts can be lost during restart. Confirm `Notifier monitoring started` and check that the CLI test reached the receiver.
 
 ## Investigate a CPU alert
 
@@ -136,9 +134,9 @@ The settlement window combines a stop followed promptly by a return online into 
 
 | Symptom | Check and next step |
 | --- | --- |
-| Module says `Notifier is idle` | Set `pm2-notifier:configPath` and `envFile` to absolute readable paths. |
+| Module says `Notifier is idle` | Set `@thechandanbhagat/pm2-notifier:envFile`, then `@thechandanbhagat/pm2-notifier:configPath`, to absolute readable paths. |
 | Module repeatedly exits at startup | Run `validate` with the same files and account. Fix invalid JSON, unknown fields, missing env variables, or inaccessible files. |
-| Module disappears after daemon restart/reboot | Install the `.tgz` package. Local-directory `pm2 install .` uses file watching and does not register a persistent module; `pm2 save` does not save modules. |
+| Module disappears after daemon restart/reboot | Run `pm2 install @thechandanbhagat/pm2-notifier`. Local-directory `pm2 install .` uses file watching and does not register a persistent module; `pm2 save` does not save modules. |
 | CLI works but module has missing credentials | Confirm PM2 module `envFile` is set and readable. Existing daemon environment can override the file; shell exports alone do not reconfigure a running daemon. |
 | Monitoring starts but an application is absent | Check the PM2 OS account and `PM2_HOME`; inspect global include/exclude patterns. PM2 modules are excluded by default. |
 | `Alert generated` appears but no delivery happens | Check event, severity, process filters, scope, enabled destinations, and route IDs. An unmatched alert is not sent. |

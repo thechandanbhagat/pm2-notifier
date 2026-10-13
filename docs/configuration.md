@@ -1,8 +1,8 @@
 # Configuration reference
 
-Reference for operators configuring `pm2-notifier`.
+Reference for operators configuring `@thechandanbhagat/pm2-notifier`.
 
-**Owner:** Project maintainers · **Last reviewed:** 2026-09-14 · **Review by:** 2026-12-14 or a configuration change.
+**Owner:** Project maintainers · **Last reviewed:** 2026-10-13 · **Review by:** 2027-01-13 or a configuration change.
 
 Configuration is strict JSON, up to 1 MiB. Unknown object fields, duplicate destination IDs, unsupported event patterns, and references to missing destinations fail validation. Omitted optional objects receive the defaults below. JSON `null` does not mean “use the default.”
 
@@ -16,6 +16,13 @@ Configuration is strict JSON, up to 1 MiB. Unknown object fields, duplicate dest
 | Variables named by `headersEnv` | Complete HTTP header values, for example `Bearer ...`. | Existing process environment takes precedence over dotenv values. |
 
 PM2 module settings default to empty strings. Without a configuration path the runtime stays idle; the CLI requires a path. Use absolute paths and protect the env file with mode `600`, readable by the PM2 account. Never put webhook URLs or credentials in committed JSON. Disabled destinations do not require their environment variables.
+
+Set `envFile` before `configPath` so credentials are available when monitoring starts:
+
+```bash
+pm2 set @thechandanbhagat/pm2-notifier:envFile /etc/pm2-notifier/notifier.env
+pm2 set @thechandanbhagat/pm2-notifier:configPath /etc/pm2-notifier/config.json
+```
 
 The dotenv file is loaded before resolving the JSON configuration path. It can therefore also define `NOTIFIER_CONFIG`; it cannot bootstrap its own location. Changing a file requires restarting the module. Prefer the module's `envFile` setting when PM2 already runs as a daemon: exporting a variable in a different shell does not update an existing daemon environment.
 
@@ -153,10 +160,16 @@ See [delivery guarantees](architecture.md#delivery-guarantees) before choosing r
 
 ## CLI
 
+For a PM2-installed package, locate the CLI under the same account and `PM2_HOME` used by your applications:
+
+```bash
+NOTIFIER_PACKAGE_DIR="${PM2_HOME:-$HOME/.pm2}/modules/@thechandanbhagat/pm2-notifier/node_modules/@thechandanbhagat/pm2-notifier"
+node "$NOTIFIER_PACKAGE_DIR/dist/cli.js" --help
+```
+
 ```text
-node dist/cli.js validate --config PATH [--env-file PATH]
-node dist/cli.js test --config PATH [--env-file PATH] [--destination ID]
-node dist/cli.js --help
+node "$NOTIFIER_PACKAGE_DIR/dist/cli.js" validate --config PATH [--env-file PATH]
+node "$NOTIFIER_PACKAGE_DIR/dist/cli.js" test --config PATH [--env-file PATH] [--destination ID]
 ```
 
 `validate` parses JSON, validates routes, and resolves credentials without contacting PM2 or a webhook. `test` sends an actual info-severity `notifier.test` alert with host scope. Without `--destination`, normal routing applies; no match is an error. With `--destination`, the selected enabled destination is tested directly, bypassing its route filters. The CLI exits nonzero on invalid configuration or failed delivery. A successful HTTP response confirms endpoint acceptance, not that a downstream workflow posted to a channel.
