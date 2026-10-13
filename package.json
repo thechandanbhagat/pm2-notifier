@@ -1,9 +1,24 @@
 {
-  "name": "pm2-notifier",
+  "name": "@thechandanbhagat/pm2-notifier",
   "version": "0.1.0",
   "description": "Configurable PM2 CPU and lifecycle alerts for Teams, Slack, Discord and webhooks",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thechandanbhagat/pm2-notifier.git"
+  },
+  "homepage": "https://github.com/thechandanbhagat/pm2-notifier#readme",
+  "bugs": {
+    "url": "https://github.com/thechandanbhagat/pm2-notifier/issues"
+  },
+  "author": "Chandan Bhagat",
+  "license": "MIT",
+  "keywords": ["pm2", "pm2-module", "monitoring", "notifications", "teams", "slack", "discord", "webhook"],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "main": "dist/index.js",
-  "apps": [{ "name": "pm2-notifier", "script": "dist/index.js", "exec_mode": "fork", "instances": 1, "watch": false, "kill_timeout": 12000, "restart_delay": 5000 }],
+  "apps": [{ "name": "@thechandanbhagat/pm2-notifier", "script": "dist/index.js", "exec_mode": "fork", "instances": 1, "watch": false, "kill_timeout": 12000, "restart_delay": 5000 }],
   "bin": {
     "pm2-notifier": "dist/cli.js"
   },
@@ -12,6 +27,7 @@
     "examples",
     "docs",
     "assets",
+    "CHANGELOG.md",
     "README.md"
   ],
   "bundleDependencies": true,
@@ -25,13 +41,15 @@
     "test:integration": "npm run build && tsx test/integration.ts",
     "validate": "tsx src/cli.ts validate",
     "notify:test": "tsx src/cli.ts test",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "prepare": "tsx scripts/patch-bundled-dependencies.ts",
+    "prepublishOnly": "npm run check && npm test"
   },
   "config": {
     "configPath": "",
     "envFile": ""
   },
-  "overrides": { "js-yaml": "^4.3.2" },
+  "overrides": { "js-yaml": "^4.3.2", "basic-ftp": "^6.2.3" },
   "dependencies": {
     "pm2": "^7.0.4",
     "pmx": "^1.6.8",
