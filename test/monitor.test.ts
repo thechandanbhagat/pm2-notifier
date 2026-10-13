@@ -91,10 +91,10 @@ test('CPU reset discards continuity and allows rearming', () => {
 
 test('scope and process filters honor wildcards, escapes, module exclusions and self exclusion', () => {
   const subject = monitor({
-    processes: { include: ['api?', 'worker.*', 'pm2-notifier'], exclude: ['api2'], includeModules: true },
+    processes: { include: ['api?', 'worker.*', '@thechandanbhagat/pm2-notifier'], exclude: ['api2'], includeModules: true },
     cpu: { ...config.monitor.cpu, durationMs: 0, scope: 'process' },
   });
-  const names = ['api1', 'api2', 'api12', 'worker.js', 'workerXjs', 'pm2-notifier'];
+  const names = ['api1', 'api2', 'api12', 'worker.js', 'workerXjs', '@thechandanbhagat/pm2-notifier'];
   const alerts = subject.sample(names.map((name, index) => ({ ...process, name, pmId: index, isModule: true })), 100, 0);
   assert.deepEqual(alerts.map(alert => alert.process?.name), ['api1', 'worker.js']);
   assert.deepEqual(monitor({ cpu: { ...config.monitor.cpu, durationMs: 0, scope: 'process' } }).sample([{ ...process, isModule: true }], 100, 0), []);

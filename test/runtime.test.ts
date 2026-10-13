@@ -16,7 +16,7 @@ test('PM2 list entries and flattened bus packets normalize without forwarding en
   assert.ok(!JSON.stringify(nested).includes('SECRET'));
   assert.equal(normalizeProcess(fields)?.restarts, 2);
   assert.equal(normalizeProcess({ ...fields, pmx_module: true })?.isModule, true);
-  assert.equal(normalizeProcess({ ...fields, name: 'pm2-notifier' })?.isModule, true);
+  assert.equal(normalizeProcess({ ...fields, name: '@thechandanbhagat/pm2-notifier' })?.isModule, true);
 });
 
 test('PM2 invalid process identity and metric boundaries are handled explicitly', () => {

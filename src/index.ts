@@ -18,7 +18,7 @@ initModule({ alert_enabled: false }, (_error, moduleConfig) => {
     }
     const configPath = process.env.NOTIFIER_CONFIG || moduleConfig.configPath;
     if (typeof configPath !== 'string' || !configPath) {
-      logger('warn', 'Notifier is idle: set pm2-notifier:configPath and envFile, or NOTIFIER_CONFIG and NOTIFIER_ENV_FILE');
+      logger('warn', 'Notifier is idle: set @thechandanbhagat/pm2-notifier:configPath and envFile, or NOTIFIER_CONFIG and NOTIFIER_ENV_FILE');
       setInterval(() => logger('warn', 'Notifier is idle: configuration path is required'), IDLE_INTERVAL_MS);
       return;
     }

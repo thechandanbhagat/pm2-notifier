@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Alert, Config, EventType, LifecycleEvent, ProcessSnapshot } from './types';
 
-const SELF_NAME = 'pm2-notifier';
+const SELF_NAME = '@thechandanbhagat/pm2-notifier';
 const MAX_SAMPLE_GAP_MULTIPLIER = 2;
 const RETIRED_RETENTION_MS = 300_000;
 const MAX_TIMESTAMP = 8_640_000_000_000_000;

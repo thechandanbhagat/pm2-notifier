@@ -8,7 +8,7 @@ import type { Config, Logger, ProcessSnapshot } from './types';
 const RPC_TIMEOUT_MS = 10_000;
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 const PERCENT_SCALE = 100;
-const SELF_NAME = 'pm2-notifier';
+const SELF_NAME = '@thechandanbhagat/pm2-notifier';
 type RecordValue = Record<string, unknown>;
 type Bus = EventEmitter & { close?: () => void };
 interface Pm2Client {
