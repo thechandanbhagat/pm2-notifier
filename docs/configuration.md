@@ -17,6 +17,8 @@ Configuration is strict JSON, up to 1 MiB. Unknown object fields, duplicate dest
 
 PM2 module settings default to empty strings. Without a configuration path the runtime stays idle; the CLI requires a path. Use absolute paths and protect the env file with mode `600`, readable by the PM2 account. Never put webhook URLs or credentials in committed JSON. Disabled destinations do not require their environment variables.
 
+For the shipped configuration, the [README env-file setup](../README.md#2-configure-your-webhook) lists every destination's exact env entries and copyable values. Only `TEAMS_PRIMARY_WEBHOOK_URL` is required until you enable additional destinations.
+
 Set `envFile` before `configPath` so credentials are available when monitoring starts:
 
 ```bash
