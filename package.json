@@ -1,0 +1,45 @@
+{
+  "name": "pm2-notifier",
+  "version": "0.1.0",
+  "description": "Configurable PM2 CPU and lifecycle alerts for Teams, Slack, Discord and webhooks",
+  "main": "dist/index.js",
+  "apps": [{ "name": "pm2-notifier", "script": "dist/index.js", "exec_mode": "fork", "instances": 1, "watch": false, "kill_timeout": 12000, "restart_delay": 5000 }],
+  "bin": {
+    "pm2-notifier": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "examples",
+    "docs",
+    "assets",
+    "README.md"
+  ],
+  "bundleDependencies": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+    "test": "tsx --test test/*.test.ts",
+    "test:integration": "npm run build && tsx test/integration.ts",
+    "validate": "tsx src/cli.ts validate",
+    "notify:test": "tsx src/cli.ts test",
+    "prepack": "npm run build"
+  },
+  "config": {
+    "configPath": "",
+    "envFile": ""
+  },
+  "overrides": { "js-yaml": "^4.3.2" },
+  "dependencies": {
+    "pm2": "^7.0.4",
+    "pmx": "^1.6.8",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  }
+}

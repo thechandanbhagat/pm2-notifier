@@ -1,0 +1,9 @@
+node_modules/
+dist/
+excluded/
+coverage/
+.env
+.env.*
+*.tgz
+notifier.config.json
+!examples/notifier.config.json
