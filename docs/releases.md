@@ -42,6 +42,16 @@ The integration test requires Linux and verifies a registry installation in an i
 
 Create an annotated `vX.Y.Z` tag at the release commit on `main`, then push that tag. The tag must match `package.json` exactly. Keep published versions and tags immutable; corrections require a new version.
 
+## Bootstrap the first publication locally
+
+Before configuring a trusted publisher, publish the first version from an authenticated maintainer session. If interactive CLI approval expires, [stage the verified archive](https://docs.npmjs.com/cli/v11/commands/npm-stage/) with npm `11.15.0` or newer:
+
+```sh
+npm exec --ignore-scripts --yes --package npm@11.15.0 -- npm stage publish ./excluded/thechandanbhagat-pm2-notifier-0.1.0.tgz --access public --tag latest
+```
+
+This command uploads the existing archive without rebuilding it. Sign in to npmjs.com, open **Staged Packages**, and approve the version with 2FA after npm finishes scanning it. Staging creates a placeholder for a new package; the intended version becomes installable after approval. A staged version reserves its version number, so approve it before running the release workflow for that same version.
+
 ## Run the release workflow
 
 Pushing a `v*` tag starts [.github/workflows/release.yml](../.github/workflows/release.yml). You can also select **Release → Run workflow** in GitHub Actions and enter an existing `release_tag`.
