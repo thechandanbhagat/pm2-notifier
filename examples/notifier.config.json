@@ -1,0 +1,87 @@
+{
+  "environment": "production",
+  "monitor": {
+    "pollIntervalMs": 5000,
+    "processes": {
+      "include": ["*"],
+      "exclude": [],
+      "includeModules": false
+    },
+    "cpu": {
+      "enabled": true,
+      "scope": "both",
+      "threshold": 95,
+      "durationMs": 60000,
+      "recoveryThreshold": 80,
+      "recoveryDurationMs": 15000
+    },
+    "lifecycle": {
+      "enabled": true,
+      "notifyOnStart": false,
+      "settleMs": 3000
+    }
+  },
+  "delivery": {
+    "timeoutMs": 10000,
+    "maxAttempts": 4,
+    "baseDelayMs": 1000,
+    "maxDelayMs": 30000,
+    "maxQueueSize": 500,
+    "batchIntervalMs": 30000
+  },
+  "destinations": [
+    {
+      "id": "teams-primary",
+      "format": "teams",
+      "urlEnv": "TEAMS_PRIMARY_WEBHOOK_URL"
+    },
+    {
+      "id": "teams-secondary",
+      "format": "teams",
+      "urlEnv": "TEAMS_SECONDARY_WEBHOOK_URL",
+      "enabled": false
+    },
+    {
+      "id": "slack-operations",
+      "format": "slack",
+      "urlEnv": "SLACK_OPERATIONS_WEBHOOK_URL",
+      "enabled": false
+    },
+    {
+      "id": "discord-operations",
+      "format": "discord",
+      "urlEnv": "DISCORD_OPERATIONS_WEBHOOK_URL",
+      "enabled": false
+    },
+    {
+      "id": "incident-webhook",
+      "format": "generic",
+      "urlEnv": "INCIDENT_WEBHOOK_URL",
+      "headersEnv": {
+        "Authorization": "INCIDENT_WEBHOOK_AUTHORIZATION"
+      },
+      "enabled": false,
+      "template": {
+        "eventId": "{{id}}",
+        "event": "{{type}}",
+        "severity": "{{severity}}",
+        "summary": "{{hostname}}: {{message}}",
+        "environment": "{{environment}}",
+        "timestamp": "{{timestamp}}",
+        "process": "{{process}}",
+        "details": "{{details}}"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "events": ["*"],
+      "destinations": ["teams-primary"]
+    },
+    {
+      "events": ["cpu.high", "process.errored"],
+      "severities": ["critical"],
+      "destinations": ["teams-secondary", "slack-operations", "discord-operations", "incident-webhook"]
+    }
+  ]
+}
