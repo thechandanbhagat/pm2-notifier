@@ -113,6 +113,8 @@ For temporary local module development, `pm2 install .` runs the checkout with f
 
 The module is written in TypeScript. Update tests and these documents when behavior or configuration changes. Provider tests use local fixtures; verify your actual webhook using the CLI before relying on production notifications.
 
+Maintainers can publish tagged versions through GitHub Actions using the [release guide](docs/releases.md).
+
 ## License
 
 [MIT](LICENSE).
