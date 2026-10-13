@@ -114,6 +114,24 @@ Create one named destination per channel/webhook URL, even when several belong t
 
 Generic destinations support HTTPS POST, custom JSON bodies, and static headers read from environment variables. Endpoints that require request signing, OAuth token refresh, a different HTTP method, or a non-JSON body need an adapter service.
 
+### Route application groups to channel groups
+
+Use the [channel-group sample JSON](examples/channel-groups.config.json) as the contents of `/etc/pm2-notifier/config.json`:
+
+| Process group | Channels receiving its alerts |
+| --- | --- |
+| `payments-*`, such as `payments-api` and `payments-worker` | Primary Teams channel and Slack operations channel. |
+| `orders-*`, such as `orders-api` and `orders-worker` | Secondary Teams channel and Discord operations channel. |
+| Host CPU high/recovery | Incident webhook. |
+
+Every destination in this sample is enabled, so provide all six env entries listed in [Configure your webhook](#2-configure-your-webhook). Keep webhook URLs in the env file; the JSON uses their variable names.
+
+Each route's `destinations` array is its channel group. Change `processes` to your app names or prefixes, and change `destinations` to the channel IDs you want. All matching routes contribute destinations, so replace the default catch-all routes rather than appending these routes beneath them. Unmatched process alerts are not delivered; a destination matched by several routes receives the alert once.
+
+Version `0.1.0` matches process names. PM2's actual `namespace` field is not supported as a route filter. If your apps have namespace labels but no shared name prefix, list their process names explicitly in `processes`; equal names in different namespaces cannot be distinguished by this release.
+
+After editing the JSON, run the validation command from the quick start, test each channel with `--destination <id>`, and restart the module.
+
 ## Development
 
 ```bash

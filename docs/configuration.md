@@ -94,6 +94,8 @@ Supported events are `cpu.high`, `cpu.recovered`, `process.started`, `process.re
 
 Filters in a route are combined with AND. Entries within a filter are alternatives. Host alerts have no process name and match the process filter only when it contains `"*"`; process-specific include patterns exclude host alerts. `excludeProcesses` applies only to process alerts. Use `scope: "process"` when the route should never receive host alerts. Several routes may match; each enabled destination receives the alert once, even when repeated across routes. Separate destination IDs pointing at the same URL are separate deliveries.
 
+`processes` matches PM2 process names, not PM2's `namespace` field. For a complete process-name-prefix mapping to several channels, use the [channel-group sample](../examples/channel-groups.config.json) and its [setup instructions](../README.md#route-application-groups-to-channel-groups).
+
 Example route for restart/stop/error alerts from API workers:
 
 ```json

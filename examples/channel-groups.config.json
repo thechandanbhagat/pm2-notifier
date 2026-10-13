@@ -1,0 +1,52 @@
+{
+  "environment": "production",
+  "destinations": [
+    {
+      "id": "teams-primary",
+      "format": "teams",
+      "urlEnv": "TEAMS_PRIMARY_WEBHOOK_URL"
+    },
+    {
+      "id": "slack-operations",
+      "format": "slack",
+      "urlEnv": "SLACK_OPERATIONS_WEBHOOK_URL"
+    },
+    {
+      "id": "teams-secondary",
+      "format": "teams",
+      "urlEnv": "TEAMS_SECONDARY_WEBHOOK_URL"
+    },
+    {
+      "id": "discord-operations",
+      "format": "discord",
+      "urlEnv": "DISCORD_OPERATIONS_WEBHOOK_URL"
+    },
+    {
+      "id": "incident-webhook",
+      "format": "generic",
+      "urlEnv": "INCIDENT_WEBHOOK_URL",
+      "headersEnv": {
+        "Authorization": "INCIDENT_WEBHOOK_AUTHORIZATION"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "scope": "process",
+      "events": ["*"],
+      "processes": ["payments-*"],
+      "destinations": ["teams-primary", "slack-operations"]
+    },
+    {
+      "scope": "process",
+      "events": ["*"],
+      "processes": ["orders-*"],
+      "destinations": ["teams-secondary", "discord-operations"]
+    },
+    {
+      "scope": "host",
+      "events": ["cpu.*"],
+      "destinations": ["incident-webhook"]
+    }
+  ]
+}
