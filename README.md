@@ -1,40 +1,58 @@
-# PM2 webhook notifier
+# pm2-notifier
 
 A PM2 module for server operators that sends sustained CPU, restart, stop, and crash alerts to any combination of Teams, Slack, Discord, and JSON webhooks.
 
-**Owner:** Project maintainers · **Last reviewed:** 2026-09-14 · **Review by:** 2026-12-14 or the next release.
+**Owner:** Project maintainers · **Last reviewed:** 2026-10-13 · **Review by:** 2027-01-13 or the next release.
 
 ## Quick start
 
-Use Node.js 22 or newer and the same OS account and `PM2_HOME` as the applications you monitor. Build a package from the checkout and install that package with PM2; no npm publication is required. The package and PM2 module name is `pm2-notifier`.
+These steps target Linux servers with PM2 already managing your applications. You need Node.js 22 or newer, npm, and Git. Run PM2 commands as the same OS user and with the same `PM2_HOME` as those applications.
 
-From that checkout:
+### 1. Clone and package
 
 ```bash
+git clone https://github.com/thechandanbhagat/pm2-notifier.git
+cd pm2-notifier
 npm ci
-npm run build
 mkdir -p excluded
 npm pack --pack-destination excluded
+```
+
+`npm pack` builds the TypeScript code and bundles production dependencies. Version `0.1.0` produces `excluded/pm2-notifier-0.1.0.tgz`; use the filename printed by `npm pack` for other versions.
+
+### 2. Configure your webhook
+
+Keep configuration and credentials outside the checkout:
+
+```bash
 sudo install -d -m 750 -o "$(id -un)" -g "$(id -gn)" /etc/pm2-notifier
 install -m 600 examples/notifier.config.json /etc/pm2-notifier/config.json
 touch /etc/pm2-notifier/notifier.env
 chmod 600 /etc/pm2-notifier/notifier.env
 ```
 
-Edit `/etc/pm2-notifier/notifier.env` using your editor and add your actual Teams Workflows webhook URL:
+The example enables the `teams-primary` destination. [Create a Teams Workflows webhook](docs/operations.md#microsoft-teams), then add its URL to `/etc/pm2-notifier/notifier.env`:
 
 ```dotenv
 TEAMS_PRIMARY_WEBHOOK_URL="https://replace-with-your-workflow-webhook-url"
 ```
 
-The example enables one Teams destination. Other destinations stay disabled until you supply their credentials and enable them. Validate locally, then send a real test message:
+For Slack, Discord, or a custom webhook, update `destinations` and `routes` in `/etc/pm2-notifier/config.json` using the [configuration reference](docs/configuration.md).
+
+### 3. Validate and test
+
+Validate the files, then send a real test notification to your Teams channel:
 
 ```bash
 node dist/cli.js validate --config /etc/pm2-notifier/config.json --env-file /etc/pm2-notifier/notifier.env
 node dist/cli.js test --config /etc/pm2-notifier/config.json --env-file /etc/pm2-notifier/notifier.env --destination teams-primary
 ```
 
-Install and configure the module using the PM2 executable that manages your applications:
+If you changed providers, replace `teams-primary` with your enabled destination ID.
+
+### 4. Install and start
+
+Install the archive and set `envFile` before `configPath` so credentials are available when monitoring starts:
 
 ```bash
 pm2 install "$(pwd)/excluded/pm2-notifier-0.1.0.tgz"
@@ -43,9 +61,9 @@ pm2 set pm2-notifier:configPath /etc/pm2-notifier/config.json
 pm2 logs pm2-notifier --lines 50
 ```
 
-Expect `Notifier monitoring started` in the logs. Before a configuration path is set, the module starts idle and logs that it needs configuration. Set `envFile` first and `configPath` last so credentials are available when monitoring starts. Each `pm2 set` restarts the module.
+Each `pm2 set` restarts the module. Check the logs for `Notifier monitoring started`.
 
-The archive contains the built module and its production dependencies. Passing the `.tgz` path to `pm2 install` registers a persistent module under `PM2_HOME/modules`; runtime files no longer depend on the checkout. Keep the checkout for the CLI commands above, or use the installed package's CLI. Keep the configuration and env files available, and follow the [reboot startup instructions](docs/operations.md#enable-startup-after-reboot).
+PM2 installs the module under `PM2_HOME/modules`. Keep the configuration and env files in place, and follow the [startup instructions](docs/operations.md#enable-startup-after-reboot) to restore monitoring after reboot.
 
 ## Alerts
 
