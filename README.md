@@ -128,9 +128,44 @@ Every destination in this sample is enabled, so provide all six env entries list
 
 Each route's `destinations` array is its channel group. Change `processes` to your app names or prefixes, and change `destinations` to the channel IDs you want. All matching routes contribute destinations, so replace the default catch-all routes rather than appending these routes beneath them. Unmatched process alerts are not delivered; a destination matched by several routes receives the alert once.
 
-Version `0.1.0` matches process names. PM2's actual `namespace` field is not supported as a route filter. If your apps have namespace labels but no shared name prefix, list their process names explicitly in `processes`; equal names in different namespaces cannot be distinguished by this release.
+Process-name routing works with version `0.1.0` and newer. If your apps use PM2's actual `namespace` field, use the namespace routes below.
 
 After editing the JSON, run the validation command from the quick start, test each channel with `--destination <id>`, and restart the module.
+
+### Route PM2 namespaces to channel groups
+
+Requires version `0.2.0` or newer. Use the [namespace sample JSON](examples/namespace-channels.config.json) as `/etc/pm2-notifier/config.json`. It maps these namespaces to channels:
+
+| PM2 namespace | Channels receiving its process alerts |
+| --- | --- |
+| `payments` | Primary Teams channel and Slack operations channel. |
+| `orders` | Secondary Teams channel and Discord operations channel. |
+| Host CPU high/recovery | Incident webhook through a separate host route. |
+
+Set `namespace` on each application in your PM2 ecosystem file, for example:
+
+```json
+{
+  "apps": [
+    { "name": "api", "namespace": "payments", "script": "./payments/api.js" },
+    { "name": "api", "namespace": "orders", "script": "./orders/api.js" }
+  ]
+}
+```
+
+Each notifier route uses `namespaces` to select PM2 namespaces and `destinations` to select the channel group:
+
+```json
+{
+  "scope": "process",
+  "namespaces": ["payments"],
+  "destinations": ["teams-primary", "slack-operations"]
+}
+```
+
+Namespace patterns support `*` and `?`, are case-sensitive, and can be restricted with `excludeNamespaces`. You can combine `namespaces` and `processes` when only certain apps in a namespace should send alerts. Applications without an assigned namespace use `default`. Host alerts have no namespace; keep their route separate as in the sample.
+
+All five sample destinations are enabled, so supply the same six env entries from the quick start. Replace catch-all routes with these mappings, validate the files, test each channel with `--destination <id>`, then restart the notifier. Alerts from namespaces without a matching route are not delivered.
 
 ## Development
 

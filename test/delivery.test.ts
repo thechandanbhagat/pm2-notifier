@@ -15,7 +15,7 @@ const ALERT: Alert = {
   process: { name: 'api.worker', pmId: 3, pid: 123 }, message: 'CPU reached 100%', details: { cpu: 100, reason: null, healthy: false },
 };
 const destination = (id = 'primary', overrides: Partial<Destination> = {}): Destination => ({ id, format: 'generic', url: `https://example.invalid/${id}?token=secret`, headers: {}, enabled: true, ...overrides });
-const route = (overrides: Partial<Route> = {}): Route => ({ destinations: ['primary'], events: ['*'], processes: [], excludeProcesses: [], severities: [], scope: 'all', ...overrides });
+const route = (overrides: Partial<Route> = {}): Route => ({ destinations: ['primary'], events: ['*'], processes: [], excludeProcesses: [], namespaces: ['*'], excludeNamespaces: [], severities: [], scope: 'all', ...overrides });
 const config = (overrides: Partial<Pick<Config, 'delivery' | 'destinations' | 'routes'>> = {}): Pick<Config, 'delivery' | 'destinations' | 'routes'> => ({
   delivery: { batchIntervalMs: 0, timeoutMs: 100, maxAttempts: 3, baseDelayMs: 10, maxDelayMs: 50, maxQueueSize: 5 }, destinations: [destination()], routes: [route()], ...overrides,
 });
@@ -170,6 +170,74 @@ test('routing matches glob events, literal regex characters, scopes, severity an
   assert.deepEqual(routeDestinations(config({ routes: [route({ processes: ['api.*'] })] }), host), []);
   assert.deepEqual(routeDestinations(config({ routes: [route({ processes: ['*'] })] }), host), [first]);
   assert.deepEqual(routeDestinations(config({ routes: [route({ scope: 'host' })] }), host), [first]);
+});
+
+test('namespace routing matches exact names and globs literally and case-sensitively', () => {
+  const cases = [
+    ['payments', 'payments', true],
+    ['payments', 'payments-worker', false],
+    ['payments', 'Payments', false],
+    ['payments-*', 'payments-eu', true],
+    ['payments-?', 'payments-a', true],
+    ['payments-?', 'payments-ab', false],
+    ['namespace.v1+[blue]($)', 'namespace.v1+[blue]($)', true],
+    ['namespace.v1+[blue]($)', 'namespaceXv11b', false],
+    ['default', undefined, true],
+    ['payments', undefined, false],
+    ['default', 'default', true],
+    ['*', 'payments', true],
+  ] as const;
+  for (const [pattern, namespace, expected] of cases) {
+    const alert: Alert = { ...ALERT, process: { ...ALERT.process!, namespace } };
+    const result = routeDestinations(config({ routes: [route({ namespaces: [pattern] })] }), alert);
+    assert.deepEqual(result.map(target => target.id), expected ? ['primary'] : [], `${pattern} against ${namespace}`);
+  }
+});
+
+test('namespace exclusions override included matches and combine with process, severity, event and scope filters', () => {
+  const alert: Alert = { ...ALERT, process: { ...ALERT.process!, namespace: 'payments-eu' } };
+  const matching = route({ namespaces: ['payments-*'], excludeNamespaces: ['payments-sandbox'], processes: ['api.*'], events: ['cpu.*'], severities: ['critical'], scope: 'process' });
+  assert.deepEqual(routeDestinations(config({ routes: [matching] }), alert).map(target => target.id), ['primary']);
+  for (const overrides of [
+    { excludeNamespaces: ['payments-eu'] },
+    { excludeNamespaces: ['payments-?u'] },
+    { excludeNamespaces: ['*'] },
+    { namespaces: ['orders-*'] },
+    { processes: ['worker-*'] },
+    { excludeProcesses: ['api.*'] },
+    { events: ['process.*'] },
+    { severities: ['info'] as const },
+    { scope: 'host' as const },
+  ]) assert.deepEqual(routeDestinations(config({ routes: [{ ...matching, ...overrides }] }), alert), []);
+  assert.deepEqual(routeDestinations(config({ routes: [route({ excludeNamespaces: ['default'] })] }), ALERT), []);
+});
+
+test('host alerts require the wildcard namespace and ignore process namespace exclusions', () => {
+  const host: Alert = { ...ALERT, process: undefined };
+  for (const namespaces of [['payments'], ['default'], ['payments-*'], ['**']]) {
+    assert.deepEqual(routeDestinations(config({ routes: [route({ namespaces })] }), host), []);
+  }
+  for (const namespaces of [['*'], ['payments', '*']]) {
+    const matching = route({ namespaces, excludeNamespaces: ['*'], scope: 'host' });
+    assert.deepEqual(routeDestinations(config({ routes: [matching] }), host).map(target => target.id), ['primary']);
+  }
+  assert.deepEqual(routeDestinations(config({ routes: [route({ namespaces: ['*'], scope: 'process' })] }), host), []);
+});
+
+test('identical process names in separate namespaces route to their channel groups without duplicate deliveries', () => {
+  const primary = destination();
+  const payments = destination('payments');
+  const orders = destination('orders');
+  const disabled = destination('disabled', { enabled: false });
+  const settings = config({ destinations: [primary, payments, orders, disabled], routes: [
+    route({ namespaces: ['payments'], destinations: ['primary', 'payments', 'payments', 'disabled'] }),
+    route({ namespaces: ['payments*'], destinations: ['payments'] }),
+    route({ namespaces: ['orders'], destinations: ['orders'] }),
+  ] });
+  const process = { name: 'worker', pmId: 3 };
+  assert.deepEqual(routeDestinations(settings, { ...ALERT, process: { ...process, namespace: 'payments' } }), [primary, payments]);
+  assert.deepEqual(routeDestinations(settings, { ...ALERT, process: { ...process, namespace: 'orders' } }), [orders]);
+  assert.deepEqual(routeDestinations(settings, { ...ALERT, process: { ...process, namespace: 'unknown' } }), []);
 });
 
 test('dispatcher posts JSON and safe custom headers, refuses redirects, and drains before closing', async () => {

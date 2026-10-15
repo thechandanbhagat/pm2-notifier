@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { DEFAULT_PM2_NAMESPACE } from './types';
 import type { Alert, Config, EventType, LifecycleEvent, ProcessSnapshot } from './types';
 
 const SELF_NAME = '@thechandanbhagat/pm2-notifier';
@@ -60,7 +61,7 @@ export function createMonitor(
         : type === 'process.stopped' || type === 'process.deleted' ? 'warning' : 'info',
       timestamp: new Date(now).toISOString(), hostname: config.hostname,
       ...(config.environment === undefined ? {} : { environment: config.environment }),
-      ...(process ? { process: { name: process.name, pmId: process.pmId, ...(process.pid ? { pid: process.pid } : {}) } } : {}),
+      ...(process ? { process: { name: process.name, namespace: process.namespace ?? DEFAULT_PM2_NAMESPACE, pmId: process.pmId, ...(process.pid ? { pid: process.pid } : {}) } } : {}),
       message, details,
     };
   }
@@ -262,6 +263,7 @@ function validateTime(now: number): void {
 
 function validateProcess(process: ProcessSnapshot): void {
   if (!process || !Number.isSafeInteger(process.pmId) || process.pmId < 0 || typeof process.name !== 'string' || process.name.length === 0
+    || (process.namespace !== undefined && (typeof process.namespace !== 'string' || process.namespace.trim().length === 0))
     || typeof process.status !== 'string' || !Number.isSafeInteger(process.restarts) || process.restarts < 0) {
     throw new TypeError('Invalid PM2 process snapshot.');
   }
