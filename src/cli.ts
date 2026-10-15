@@ -4,18 +4,30 @@ import { loadEnvFile } from 'node:process';
 import { parseArgs } from 'node:util';
 import { loadConfig } from './config';
 import { createDispatcher, routeDestinations } from './delivery';
+import { parseUiPort, startUiApplication, withShutdownHandlers, type Application } from './application';
 import type { Alert, Config, Logger } from './types';
 
-const HELP = 'Usage: pm2-notifier <validate|test> --config <file> [--env-file <file>] [--destination <id>]\nThe test command sends a real notifier.test notification to matching destinations.\n';
+const HELP = 'Usage: pm2-notifier ui [--port 3100] [--state-file <file>] [--config <file>] [--env-file <file>]\n       pm2-notifier <validate|test> --config <file> [--env-file <file>] [--destination <id>]\nThe UI creates channels and workflows and runs monitoring. Open the private URL printed at startup.\nThe test command sends a real notifier.test notification to matching destinations.\n';
 
-export async function runCli(args: string[], logger: Logger): Promise<void> {
+export async function runCli(args: string[], logger: Logger): Promise<Application | void> {
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
     config: { type: 'string' }, 'env-file': { type: 'string' }, destination: { type: 'string' }, help: { type: 'boolean' },
+    port: { type: 'string' }, 'state-file': { type: 'string' },
   } });
   if (values.help) { process.stdout.write(HELP); return; }
   const command = positionals[0];
-  if (positionals.length !== 1 || (command !== 'validate' && command !== 'test')) throw new Error(HELP.trim());
+  if (positionals.length !== 1 || !['validate', 'test', 'ui'].includes(command)) throw new Error(HELP.trim());
   if (values.destination && command !== 'test') throw new Error('--destination is only supported by test');
+  if (command !== 'ui' && (values.port !== undefined || values['state-file'] !== undefined)) throw new Error('--port and --state-file are only supported by ui');
+  if (command === 'ui') {
+    const configPath = values.config || process.env.NOTIFIER_CONFIG;
+    const envFile = values['env-file'] || process.env.NOTIFIER_ENV_FILE;
+    if (envFile && !configPath) throw new Error('--env-file requires --config when importing into the UI');
+    const application = await startUiApplication({
+      port: parseUiPort(values.port ?? 3100), statePath: values['state-file'], configPath, envFile,
+    }, logger);
+    return withShutdownHandlers(application, logger);
+  }
   const envFile = values['env-file'] || process.env.NOTIFIER_ENV_FILE;
   if (envFile) {
     try { loadEnvFile(envFile); } catch { throw new Error('Cannot load notifier environment file'); }

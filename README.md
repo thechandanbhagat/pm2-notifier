@@ -4,20 +4,95 @@ A PM2 module for server operators that sends sustained CPU, restart, stop, and c
 
 [npm package](https://www.npmjs.com/package/@thechandanbhagat/pm2-notifier) · [Releases](https://github.com/thechandanbhagat/pm2-notifier/releases)
 
-**Owner:** Project maintainers · **Last reviewed:** 2026-10-13 · **Review by:** 2027-01-13 or the next release.
+**Owner:** Project maintainers · **Last reviewed:** 2026-10-15 · **Review by:** 2027-01-15 or the next release.
 
 ## Quick start
 
-These steps target Linux servers with PM2 already managing your applications. You need Node.js 22 or newer and npm. Run PM2 commands as the same OS user and with the same `PM2_HOME` as those applications.
-
-### 1. Install the module
+You need Node.js 22 or newer and PM2 managing your applications. Run PM2 commands as the same OS user and with the same `PM2_HOME` as those applications.
 
 ```bash
 pm2 install @thechandanbhagat/pm2-notifier
-NOTIFIER_PACKAGE_DIR="${PM2_HOME:-$HOME/.pm2}/modules/@thechandanbhagat/pm2-notifier/node_modules/@thechandanbhagat/pm2-notifier"
+pm2 logs @thechandanbhagat/pm2-notifier --lines 50
 ```
 
-The module stays idle until you set its configuration path. Keep `NOTIFIER_PACKAGE_DIR` defined for the commands below; it points to the package installed by PM2.
+On a fresh installation, the module starts a setup UI on **127.0.0.1:3100**. Open the complete browser URL printed in the logs, including its `#token=…` fragment. The token changes when the module restarts; keep this access link private.
+
+1. Add a notification channel, choose Teams, Slack, Discord, or a generic webhook, and paste its webhook URL.
+2. Create a workflow: select the events and process-name patterns to watch, then assign one or more channels.
+3. Set your CPU thresholds in **Monitoring**, then select **Save and apply**. Monitoring starts with the saved settings.
+4. In **Channels**, select **Test channel** to send a real test notification and confirm it arrives.
+
+The UI manages configuration and credentials together, so you do not need to write JSON or an env file. Webhook creation still happens in your provider; see the [provider setup guide](docs/operations.md#create-webhook-destinations). A notifier workflow is an alert-routing rule; it does not create a Microsoft Teams Workflow.
+
+For a remote server, open an SSH tunnel from your computer, then open the logged URL in your local browser:
+
+```bash
+ssh -L 3100:127.0.0.1:3100 user@server
+```
+
+The UI listens only on loopback. Settings are saved privately under `${PM2_HOME:-$HOME/.pm2}/pm2-notifier/ui-settings.json`, outside the installed package. UI saves apply without restarting the module, but reset the monitor's observation windows. Follow the [startup instructions](docs/operations.md#enable-startup-after-reboot) to restore monitoring after reboot.
+
+From a source checkout, run `npm ci` followed by `npm run ui` to start the same UI and monitor. You can choose a port with `npm run ui -- --port 3200`. Run only one notifier against a given PM2 daemon to avoid duplicate alerts.
+
+### Change the UI port
+
+For the installed PM2 module, set `uiPort` to the port you want:
+
+```bash
+pm2 set @thechandanbhagat/pm2-notifier:uiPort 3200
+pm2 logs @thechandanbhagat/pm2-notifier --lines 50
+```
+
+PM2 saves the setting and automatically restarts the module; no extra restart is necessary. The UI now listens on **127.0.0.1:3200**. Open the fresh complete URL from the logs, including its new `#token=…` fragment. Saved workflows and notification channels persist across the restart.
+
+For a remote server, update the SSH tunnel to match:
+
+```bash
+ssh -L 3200:127.0.0.1:3200 user@server
+```
+
+If you need to restart the module manually at another time, use:
+
+```bash
+pm2 restart @thechandanbhagat/pm2-notifier
+```
+
+Then read the logs again for the new access URL.
+
+## Demo video
+
+[Watch the UI walkthrough on YouTube](https://youtu.be/qIQ2GkLKI6M), with ElevenLabs narration, instrumental background music, and English captions. It shows installation, automatic UI startup, channel and workflow setup, and changing the UI port through PM2, including the automatic restart and fresh access URL.
+
+[![PM2 Alerts Made Easy — watch the demo on YouTube](https://i.ytimg.com/vi/qIQ2GkLKI6M/hqdefault.jpg)](https://youtu.be/qIQ2GkLKI6M)
+
+## Screenshots
+
+Dark mode is the default. Use the theme button in the top-right corner to switch to light mode; your choice is remembered in this browser. Switching themes preserves any unsaved configuration changes.
+
+These screenshots show example workflows and notification channels.
+
+| Dark mode (default) | Light mode |
+| --- | --- |
+| ![Workflow overview in dark mode](assets/screenshots/workflows-dark.jpg) | ![Workflow overview in light mode](assets/screenshots/workflows-light.jpg) |
+
+<details>
+<summary>Notification channel configuration</summary>
+
+![Notification channel configuration in dark mode](assets/screenshots/channels-dark.jpg)
+
+</details>
+
+## Manual file setup
+
+Existing `configPath`/`envFile` installations continue to use their files. This mode remains available for configuration managed by deployment tooling. Its UI is off; the [UI operations guide](docs/operations.md#move-an-existing-file-setup-into-the-ui) explains how to migrate.
+
+### 1. Locate the installed package
+
+After installing the module, define its package directory for the commands below:
+
+```bash
+NOTIFIER_PACKAGE_DIR="${PM2_HOME:-$HOME/.pm2}/modules/@thechandanbhagat/pm2-notifier/node_modules/@thechandanbhagat/pm2-notifier"
+```
 
 ### 2. Configure your webhook
 
@@ -98,7 +173,7 @@ PM2 installs the module under `PM2_HOME/modules`. Keep the configuration and env
 | `process.errored` | Critical alert when PM2 reports an errored process. |
 | `process.deleted` | Warning when a monitored process is deleted from PM2. |
 | `process.started` | Optional info alert; disabled by default. |
-| `notifier.test` | Info alert sent explicitly by the test CLI. |
+| `notifier.test` | Info alert sent explicitly by the UI or test CLI. |
 
 To require 100% CPU for one minute, set `monitor.cpu.threshold` to `100` and keep `durationMs` at `60000`. Process CPU is relative to one logical core; host CPU averages across all logical cores. Monitoring is sampled, so brief activity between samples is invisible.
 
@@ -106,7 +181,7 @@ PM2 supplies process status and sometimes an exit code. Notifications include th
 
 ## Multiple channels and custom webhooks
 
-Create one named destination per channel/webhook URL, even when several belong to the same provider. Routes select events, process names, severities, and process/host scope. Matching routes fan out to enabled destinations and deduplicate repeated destination IDs.
+Create one channel per webhook URL, even when several belong to the same provider. UI workflows select events, process names, severities, and process/host scope, then assign channels. In the JSON format these are called `destinations` and `routes`. Matching workflows fan out to enabled channels and deduplicate repeated destination IDs.
 
 - [Configuration reference](docs/configuration.md): complete options, routing, environment variables, and generic JSON templates.
 - [Operations guide](docs/operations.md): create provider webhooks, apply changes, enable reboot startup, and diagnose missed alerts.
@@ -130,7 +205,7 @@ Each route's `destinations` array is its channel group. Change `processes` to yo
 
 Version `0.1.0` matches process names. PM2's actual `namespace` field is not supported as a route filter. If your apps have namespace labels but no shared name prefix, list their process names explicitly in `processes`; equal names in different namespaces cannot be distinguished by this release.
 
-After editing the JSON, run the validation command from the quick start, test each channel with `--destination <id>`, and restart the module.
+After editing the JSON, run the validation command from the manual file setup, test each channel with `--destination <id>`, and restart the module.
 
 ## Development
 
@@ -141,6 +216,7 @@ npm ci
 npm run check
 npm test
 npm run build
+npm run ui
 ```
 
 On Linux or WSL Linux, run the real PM2 smoke test:
@@ -153,7 +229,7 @@ It installs the scoped module from a loopback npm registry in an isolated tempor
 
 For temporary local module development, `pm2 install .` runs the checkout with file watching. PM2's local-directory installation does not register the module for daemon startup, and `pm2 save` excludes modules. Use the npm installation above for a server that must recover after reboot.
 
-The module is written in TypeScript. Update tests and these documents when behavior or configuration changes. Provider tests use local fixtures; verify your actual webhook using the CLI before relying on production notifications.
+The module is written in TypeScript. Update tests and these documents when behavior or configuration changes. Provider tests use local fixtures; verify your actual webhook using the UI or CLI before relying on production notifications.
 
 Maintainers can publish tagged versions through GitHub Actions using the [release guide](docs/releases.md).
 

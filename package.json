@@ -35,19 +35,23 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/copy-web-assets.cjs",
     "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "test": "tsx --test test/*.test.ts",
     "test:integration": "npm run build && tsx test/integration.ts",
     "validate": "tsx src/cli.ts validate",
     "notify:test": "tsx src/cli.ts test",
+    "ui": "tsx src/cli.ts ui",
     "prepack": "npm run build",
     "prepare": "tsx scripts/patch-bundled-dependencies.ts",
     "prepublishOnly": "npm run check && npm test"
   },
   "config": {
     "configPath": "",
-    "envFile": ""
+    "envFile": "",
+    "uiPort": 3100,
+    "uiEnabled": true,
+    "statePath": ""
   },
   "overrides": { "js-yaml": "^4.3.2", "basic-ftp": "^6.2.3" },
   "dependencies": {

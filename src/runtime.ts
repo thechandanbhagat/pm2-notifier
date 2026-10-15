@@ -1,6 +1,5 @@
 import pm2 = require('pm2');
 import { cpus, type CpuInfo } from 'node:os';
-import type { EventEmitter } from 'node:events';
 import { createMonitor } from './monitor';
 import { createDispatcher } from './delivery';
 import type { Config, Logger, ProcessSnapshot } from './types';
@@ -10,12 +9,18 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 const PERCENT_SCALE = 100;
 const SELF_NAME = '@thechandanbhagat/pm2-notifier';
 type RecordValue = Record<string, unknown>;
-type Bus = EventEmitter & { close?: () => void };
+type BusListener = (packet: unknown) => void;
+interface Bus {
+  on(event: string, listener: BusListener): unknown;
+  removeListener?(event: string, listener: BusListener): unknown;
+  off?(event: string, listener: BusListener): unknown;
+  close?(): void;
+}
 interface Pm2Client {
   connect(callback: (error?: Error | null) => void): void;
   list(callback: (error: Error | null, processes?: unknown[]) => void): void;
   launchBus(callback: (error: Error | null, bus?: Bus) => void): void;
-  disconnect(): void;
+  disconnect(callback: (error?: Error | null) => void): void;
 }
 interface RuntimeDependencies {
   readonly client?: Pm2Client;
@@ -144,7 +149,9 @@ export async function startRuntime(config: Config, logger: Logger, dependencies:
     bus.on('error', onBusError);
     timer = setTimeout(tick, config.monitor.pollIntervalMs);
   } catch {
-    try { client.disconnect(); } catch { logger('error', 'PM2 disconnect failed during startup cleanup'); }
+    try { await rpc<void>(callback => client.disconnect(callback)); }
+    catch { logger('error', 'PM2 disconnect failed during startup cleanup'); }
+    try { bus?.close?.(); } catch { logger('error', 'PM2 event bus close failed during startup cleanup'); }
     await dispatcher.close();
     throw new Error('Cannot initialize PM2 monitor');
   }
@@ -154,16 +161,28 @@ export async function startRuntime(config: Config, logger: Logger, dependencies:
       if (stopping) return stopping;
       stopped = true;
       if (timer) clearTimeout(timer);
-      bus?.removeListener('process:event', onEvent);
-      bus?.removeListener('error', onBusError);
       stopping = (async () => {
         let cleanupFailed = false;
-        try { bus?.close?.(); } catch { cleanupFailed = true; logger('error', 'PM2 event bus close failed'); }
-        try { client.disconnect(); } catch { cleanupFailed = true; logger('error', 'PM2 disconnect failed'); }
+        // PM2's axon bus exposes off(event), while injected EventEmitters expose removeListener.
+        const unsubscribe = bus?.removeListener ?? bus?.off;
+        for (const [event, listener] of [['process:event', onEvent], ['error', onBusError]] as const) {
+          try { unsubscribe?.call(bus, event, listener); }
+          catch { cleanupFailed = true; logger('error', 'PM2 event bus listener cleanup failed'); }
+        }
+        // Let PM2 close its own bus first. Closing it early makes disconnect report an error
+        // before its asynchronous RPC cleanup finishes, which can invalidate the next runtime.
+        const disconnecting = rpc<void>(callback => client.disconnect(callback))
+          .catch(() => { cleanupFailed = true; logger('error', 'PM2 disconnect failed'); })
+          .finally(() => {
+            try { bus?.close?.(); } catch { cleanupFailed = true; logger('error', 'PM2 event bus close failed'); }
+          });
         let shutdownTimer: ReturnType<typeof setTimeout> | undefined;
         try {
           await Promise.race([
-            (async () => { await sampling; await dispatcher.close(); })(),
+            Promise.allSettled([disconnecting, (async () => { await sampling; await dispatcher.close(); })()]).then(results => {
+              const failure = results.find(result => result.status === 'rejected');
+              if (failure?.status === 'rejected') throw failure.reason;
+            }),
             new Promise<never>((_, reject) => { shutdownTimer = setTimeout(() => reject(new Error('Notifier shutdown timed out; queued alerts may be lost')), SHUTDOWN_TIMEOUT_MS); }),
           ]);
           if (cleanupFailed) throw new Error('PM2 resource cleanup failed');

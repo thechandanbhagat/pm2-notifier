@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
@@ -11,7 +11,8 @@ import type { Alert, EventType } from '../src/types';
 const COMMAND_TIMEOUT_MS = 120_000;
 const ALERT_TIMEOUT_MS = 30_000;
 const CHECK_INTERVAL_MS = 100;
-const POLL_INTERVAL_MS = 500;
+// Darwin's pidusage backend measures elapsed CPU time in whole seconds.
+const POLL_INTERVAL_MS = process.platform === 'darwin' ? 1_100 : 500;
 const DUPLICATE_CHECK_MS = 1_500;
 const COMMAND_MAX_BUFFER_BYTES = 2_000_000;
 const REGISTRY_HOST = '127.0.0.1';
@@ -173,6 +174,69 @@ async function main(): Promise<void> {
     assert.deepEqual(errors, [], 'npm requested an unexpected registry resource');
     assert.ok(registryRequests.includes(`GET /${packageName}`), 'npm did not fetch package metadata');
     assert.ok(registryRequests.includes(`GET ${REGISTRY_TARBALL_PATH}`), 'npm did not fetch the packed archive');
+    const freshModules = JSON.parse(await pm2('jlist')) as { name: string; pm2_env: { pm_out_log_path: string; pm_err_log_path: string } }[];
+    const freshModule = freshModules.find(entry => entry.name === packageName);
+    assert.ok(freshModule);
+    moduleLogPaths = [freshModule.pm2_env.pm_out_log_path, freshModule.pm2_env.pm_err_log_path];
+    const latestUiUrl = async () => {
+      try {
+        const records = (await readFile(freshModule.pm2_env.pm_out_log_path, 'utf8')).split('\n');
+        for (const line of records.reverse()) {
+          if (!line.includes('Notifier setup UI ready')) continue;
+          const entry = JSON.parse(line) as { url: string };
+          return entry.url;
+        }
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+      return undefined;
+    };
+    await waitFor(async () => Boolean(await latestUiUrl()), 'first-run setup UI');
+    const uiUrl = new URL((await latestUiUrl())!);
+    const uiToken = new URLSearchParams(uiUrl.hash.slice(1)).get('token')!;
+    const uiHeaders = { 'X-Notifier-Token': uiToken, 'Content-Type': 'application/json' };
+    const emptyStateResponse = await fetch(new URL('/api/state', uiUrl), { headers: uiHeaders });
+    assert.equal(emptyStateResponse.status, 200);
+    const emptyState = await emptyStateResponse.json() as { revision: string; config: unknown };
+    assert.equal(emptyState.config, null);
+    const setupResponse = await fetch(new URL('/api/config', uiUrl), {
+      method: 'POST', headers: uiHeaders, body: JSON.stringify({
+        revision: emptyState.revision,
+        config: JSON.parse(await readFile(configPath, 'utf8')),
+        secrets: { SMOKE_WEBHOOK_URL: `http://127.0.0.1:${address.port}/alerts` },
+      }),
+    });
+    assert.equal(setupResponse.status, 200);
+    const setupState = await setupResponse.json() as { revision: string; config: unknown; runtime: { running: boolean } };
+    assert.equal(setupState.runtime.running, true);
+    const statePath = join(home, 'pm2-notifier', 'ui-settings.json');
+    assert.equal((await stat(statePath)).mode & 0o777, 0o600);
+    const channelTest = await fetch(new URL('/api/test', uiUrl), { method: 'POST', headers: uiHeaders, body: JSON.stringify({ destination: 'loopback' }) });
+    assert.equal(channelTest.status, 200);
+    assert.equal(alerts.length, 1);
+    assert.equal(alerts[0].type, 'notifier.test');
+    alerts.length = 0;
+    const reapplied = await fetch(new URL('/api/config', uiUrl), {
+      method: 'POST', headers: uiHeaders,
+      body: JSON.stringify({ revision: setupState.revision, config: setupState.config, secrets: {} }),
+    });
+    assert.equal(reapplied.status, 200);
+    assert.equal(((await reapplied.json()) as { runtime: { running: boolean } }).runtime.running, true);
+    await pm2('restart', FIXTURE_NAME);
+    await waitForAlert('process.restarted');
+    alerts.length = 0;
+    await pm2('restart', packageName);
+    await waitFor(async () => {
+      const nextUrl = await latestUiUrl();
+      return Boolean(nextUrl && nextUrl !== uiUrl.href);
+    }, 'saved UI settings after restart');
+    const resumedUrl = new URL((await latestUiUrl())!);
+    const resumed = await fetch(new URL('/api/state', resumedUrl), {
+      headers: { 'X-Notifier-Token': new URLSearchParams(resumedUrl.hash.slice(1)).get('token')! },
+    });
+    assert.equal(resumed.status, 200);
+    const resumedState = await resumed.json() as { runtime: { running: boolean }; config: { hostname: string } };
+    assert.equal(resumedState.runtime.running, true);
+    assert.equal(resumedState.config.hostname, 'integration-smoke');
+    process.stdout.write('PASS first-run UI, hot-applied workflow, live PM2 event, channel test, private storage, and managed restart\n');
     await pm2('set', `${packageName}:envFile`, envPath);
     await pm2('set', `${packageName}:configPath`, configPath);
     const installed = JSON.parse(await pm2('jlist')) as { name: string; pm2_env: { pm_exec_path: string; watch: boolean; status: string; pm_out_log_path: string; pm_err_log_path: string } }[];
@@ -237,6 +301,12 @@ async function main(): Promise<void> {
     process.stdout.write('PASS registered module relaunch after daemon restart\n');
     process.stdout.write(`${JSON.stringify({ platform: process.platform, node: process.version, events: alerts.map(alert => ({ type: alert.type, details: alert.details })) }, null, 2)}\n`);
   } catch (error) {
+    if (daemonStarted) {
+      try {
+        const status = JSON.parse(await pm2('jlist')) as { name: string; monit?: { cpu?: number }; pm2_env: { status: string; restart_time: number } }[];
+        process.stderr.write(`${JSON.stringify(status.map(item => ({ name: item.name, cpu: item.monit?.cpu, status: item.pm2_env.status, restarts: item.pm2_env.restart_time })))}\n`);
+      } catch { process.stderr.write('Cannot read isolated PM2 process status\n'); }
+    }
     for (const filename of moduleLogPaths) {
       try { process.stderr.write(await readFile(filename, 'utf8')); }
       catch (logError) { if ((logError as NodeJS.ErrnoException).code !== 'ENOENT') process.stderr.write(`Cannot read smoke log: ${String(logError)}\n`); }

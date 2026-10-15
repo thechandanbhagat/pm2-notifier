@@ -45,7 +45,7 @@ test('runtime connects, tolerates a failed sample, subscribes and releases PM2 r
       connect: callback => { events.push('connect'); callback(); },
       list: callback => callback(new Error('SECRET')),
       launchBus: callback => callback(null, bus),
-      disconnect: () => { events.push('disconnect'); },
+      disconnect: callback => { events.push('disconnect'); callback(); },
     }, readCpus: () => [],
   });
   assert.equal(bus.listenerCount('process:event'), 1);
@@ -64,9 +64,102 @@ test('runtime connection failures reject with sanitized diagnostics and disconne
   const config = parseConfig({ destinations: [{ id: 'off', format: 'generic', urlEnv: 'UNSET', enabled: false }], routes: [{ destinations: ['off'] }] }, {});
   await assert.rejects(startRuntime(config, () => {}, { client: {
     connect: callback => callback(new Error('SECRET')), list: () => assert.fail('unexpected list'),
-    launchBus: () => assert.fail('unexpected bus'), disconnect: () => { disconnected = true; },
+    launchBus: () => assert.fail('unexpected bus'), disconnect: callback => { disconnected = true; callback(); },
   } }), /^Error: Cannot initialize PM2 monitor$/);
   assert.equal(disconnected, true);
+});
+
+test('runtime shuts down PM2 axon buses that expose off instead of removeListener', async () => {
+  const events: string[] = [];
+  const listeners = new Map<string, (packet: unknown) => void>();
+  const bus = {
+    on: (event: string, listener: (packet: unknown) => void) => { listeners.set(event, listener); },
+    off: (event: string) => { events.push(`off:${event}`); listeners.delete(event); },
+    close: () => { events.push('close'); },
+  };
+  const config = parseConfig({ destinations: [{ id: 'off', format: 'generic', urlEnv: 'UNSET', enabled: false }], routes: [{ destinations: ['off'] }] }, {});
+  const runtime = await startRuntime(config, () => {}, { client: {
+    connect: callback => callback(), list: callback => callback(null, []), launchBus: callback => callback(null, bus),
+    disconnect: callback => { events.push('disconnect'); callback(); },
+  } });
+  assert.equal(listeners.size, 2);
+  await runtime.stop();
+  await runtime.stop();
+  assert.equal(listeners.size, 0);
+  assert.deepEqual(events, ['off:process:event', 'off:error', 'disconnect', 'close']);
+});
+
+test('listener cleanup failures still close the bus and disconnect before rejecting shutdown', async () => {
+  const events: string[] = [];
+  const bus = {
+    on: () => {},
+    off: (event: string) => { events.push(`off:${event}`); throw new Error('SECRET'); },
+    close: () => { events.push('close'); },
+  };
+  const config = parseConfig({ destinations: [{ id: 'off', format: 'generic', urlEnv: 'UNSET', enabled: false }], routes: [{ destinations: ['off'] }] }, {});
+  const runtime = await startRuntime(config, (_level, message) => { events.push(message); }, { client: {
+    connect: callback => callback(), list: callback => callback(null, []), launchBus: callback => callback(null, bus),
+    disconnect: callback => { events.push('disconnect'); callback(); },
+  } });
+  const stopping = runtime.stop();
+  assert.equal(stopping, runtime.stop());
+  await assert.rejects(stopping, /^Error: PM2 resource cleanup failed$/);
+  assert.ok(events.includes('off:process:event'));
+  assert.ok(events.includes('off:error'));
+  assert.deepEqual(events.slice(-2), ['disconnect', 'close']);
+  assert.ok(!events.join().includes('SECRET'));
+});
+
+test('runtime shutdown waits for asynchronous PM2 disconnect before allowing a replacement', async () => {
+  let finishDisconnect: (() => void) | undefined;
+  let busClosed = false;
+  const bus = Object.assign(new EventEmitter(), { close: () => { busClosed = true; } });
+  const config = parseConfig({ destinations: [{ id: 'off', format: 'generic', urlEnv: 'UNSET', enabled: false }], routes: [{ destinations: ['off'] }] }, {});
+  const runtime = await startRuntime(config, () => {}, { client: {
+    connect: callback => callback(), list: callback => callback(null, []), launchBus: callback => callback(null, bus),
+    disconnect: callback => { finishDisconnect = callback; },
+  } });
+  let stopped = false;
+  const stopping = runtime.stop().then(() => { stopped = true; });
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(stopped, false);
+  assert.equal(busClosed, false);
+  finishDisconnect!();
+  await stopping;
+  assert.equal(stopped, true);
+  assert.equal(busClosed, true);
+});
+
+test('a failed delivery still waits for PM2 disconnect before shutdown rejects', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(null, { status: 400 });
+  let finishDisconnect: (() => void) | undefined;
+  let runtime: Awaited<ReturnType<typeof startRuntime>> | undefined;
+  try {
+    let recordFailure: (() => void) | undefined;
+    const deliveryFailed = new Promise<void>(resolve => { recordFailure = resolve; });
+    const config = parseConfig({
+      monitor: { lifecycle: { notifyOnStart: true } },
+      destinations: [{ id: 'ops', format: 'generic', urlEnv: 'HOOK' }], routes: [{ destinations: ['ops'] }],
+    }, { HOOK: 'https://example.test/fixture' });
+    runtime = await startRuntime(config, (_level, message) => { if (message === 'Webhook delivery failed') recordFailure!(); }, { client: {
+      connect: callback => callback(),
+      list: callback => callback(null, [{ pm_id: 1, name: 'worker', pm2_env: { status: 'online', restart_time: 0 } }]),
+      launchBus: callback => callback(null, new EventEmitter()),
+      disconnect: callback => { finishDisconnect = callback; },
+    } });
+    await deliveryFailed;
+    let stopped = false;
+    const stopping = runtime.stop().then(() => { stopped = true; return undefined; }, error => { stopped = true; return error; });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(stopped, false);
+    finishDisconnect!();
+    assert.match(String(await stopping), /Webhook delivery failed/);
+  } finally {
+    finishDisconnect?.();
+    await runtime?.stop().catch(() => {});
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('runtime always attempts cleanup and repeated stop calls preserve the same failure', async () => {
@@ -100,6 +193,6 @@ test('synchronous PM2 API failures reject immediately without exposing their mes
   const config = parseConfig({ destinations: [{ id: 'off', format: 'generic', urlEnv: 'UNSET', enabled: false }], routes: [{ destinations: ['off'] }] }, {});
   await assert.rejects(startRuntime(config, () => {}, { client: {
     connect: () => { throw new Error('SECRET'); },
-    list: () => assert.fail('unexpected sample'), launchBus: () => assert.fail('unexpected bus'), disconnect: () => {},
+    list: () => assert.fail('unexpected sample'), launchBus: () => assert.fail('unexpected bus'), disconnect: callback => callback(),
   } }), /^Error: Cannot initialize PM2 monitor$/);
 });

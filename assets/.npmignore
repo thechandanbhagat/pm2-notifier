@@ -1,0 +1,4 @@
+# Keep local video production and upload assets out of npm archives.
+demo/
+youtube/
+.DS_Store

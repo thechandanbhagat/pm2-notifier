@@ -2,7 +2,7 @@
 
 Explanation for maintainers and operators deciding where the notifier fits in their monitoring system.
 
-**Owner:** Project maintainers · **Last reviewed:** 2026-09-14 · **Review by:** 2026-12-14 or an architecture change.
+**Owner:** Project maintainers · **Last reviewed:** 2026-10-15 · **Review by:** 2027-01-15 or an architecture change.
 
 ## Alert flow
 
@@ -25,6 +25,16 @@ flowchart LR
 The notifier runs as a PM2 module under the same user and `PM2_HOME` as the applications it observes. It polls process snapshots and host CPU counters, and listens to PM2 lifecycle events. Every alert uses a common schema before routing and provider formatting. Monitoring and delivery use separate in-memory state; one slow destination does not block other destination queues.
 
 Production installation uses an npm `.tgz` archive containing `dist/` and the resolved production dependencies. PM2 stores and registers this package under `PM2_HOME/modules`, independently of the source checkout. Local-directory installation is a development path with file watching and does not register the module for daemon startup. PM2 restores registered modules separately from the application list saved by `pm2 save`.
+
+## Configuration and local UI
+
+Managed mode combines a loopback HTTP server, a private settings store, and the existing monitoring runtime. The browser edits channels, workflows, and monitoring options; the server validates them through the same configuration schema used by manual JSON files. Channels map to destinations and workflows map to routes. Webhook credentials are held by the server and never included in settings reads sent back to the browser.
+
+The server binds to `127.0.0.1` and generates a fresh access token on every start. Its logged browser URL carries the token in a fragment; API requests use an authentication header. An SSH tunnel provides remote access without opening a public listener. Keep the startup access link private.
+
+Configuration and credentials are saved together through an atomic replacement of a mode-`600` file. Saving and applying are separate outcomes: a valid saved configuration can remain on disk even if the PM2 runtime cannot start, and the UI reports that failure. Applying stops the previous runtime and starts a new one in the same process, resetting CPU and lifecycle state. A save may therefore produce another startup notification when `notifyOnStart` is enabled. Pending delivery follows the runtime's normal shutdown behavior.
+
+The PM2 module uses managed mode when no manual configuration path is provided. An explicit `configPath` or `NOTIFIER_CONFIG` preserves manual file mode with no module UI. The standalone `ui` CLI runs both the UI and the monitor. It must not be run alongside another notifier for the same daemon, or both will observe and deliver alerts.
 
 ## CPU observations
 
@@ -60,7 +70,7 @@ On graceful shutdown, the runtime stops observing and attempts to drain queues f
 
 Teams messages group events over a configurable 30-second window and use a compact Adaptive Card 1.5 envelope, with up to 20 event rows per card and each row capped at 350 characters. The header shows the first event's date in full English form (for example, `10 January 2026`), and the timeline uses one table with shared column widths and left/top cell alignment for time, process, and update. Each row shows its own time including seconds, with UTC labeled once above the time column. Process names wrap independently of timestamps, PM2 IDs distinguish instances, event labels use severity colors, and CPU/exit details appear below each label. The clickable header logo links to `https://github.com/thechandanbhagat/pm2-notifier`. The original logo is included at `assets/pm2-notifier-logo.png`. A 64-pixel transparent PNG rendition at `assets/pm2-notifier-logo-card.png` is embedded as a base64 data URI in `src/branding.ts`, so card images need no hosting or GitHub repository. There is no bottom GitHub button. The Workflows attribution and Get template link are added by Teams outside the notifier payload; see the [workflow footer instructions](operations.md#workflow-template-attribution) for the reported workaround. Larger batches split into multiple cards, and the formatter also splits earlier when needed to keep each UTF-8 payload within 28,000 bytes; flush and graceful shutdown bypass the grouping delay. Slack text is capped at 2900 characters, disables markdown/mention parsing and link unfurls, and escapes potentially active mention content. Discord uses embeds, disables allowed mentions, and caps title/description text at 200/4000 characters. These limits keep normal alerts within provider payload boundaries. Generic JSON payloads are not truncated.
 
-Webhook URLs and static header values come from environment variables, with an optional protected env file for PM2 deployments. Built-in logs avoid secrets, raw application logs, and provider response bodies. Only configured destinations receive alerts. Routing and templates allow custom endpoint schemas; authentication protocols requiring fresh signatures or token refresh belong in an adapter service.
+Webhook URLs and static header values come from the private managed settings file in UI mode, or environment variables with an optional protected env file in manual mode. Delivery logs avoid webhook credentials, raw application logs, and provider response bodies. Only configured destinations receive alerts. Routing and templates allow custom endpoint schemas; authentication protocols requiring fresh signatures or token refresh belong in an adapter service.
 
 ## Availability boundary
 

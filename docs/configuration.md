@@ -2,9 +2,27 @@
 
 Reference for operators configuring `@thechandanbhagat/pm2-notifier`.
 
-**Owner:** Project maintainers · **Last reviewed:** 2026-10-13 · **Review by:** 2027-01-13 or a configuration change.
+**Owner:** Project maintainers · **Last reviewed:** 2026-10-15 · **Review by:** 2027-01-15 or a configuration change.
+
+The UI is the easiest way to create channels and workflows. It stores the same configuration model described below; channels correspond to `destinations`, and workflows correspond to `routes`.
 
 Configuration is strict JSON, up to 1 MiB. Unknown object fields, duplicate destination IDs, unsupported event patterns, and references to missing destinations fail validation. Omitted optional objects receive the defaults below. JSON `null` does not mean “use the default.”
+
+## UI and managed settings
+
+A module without `configPath` or `NOTIFIER_CONFIG` uses managed settings and starts the UI by default. The server binds only to `127.0.0.1`; open its complete logged URL with the `#token=…` fragment. Each server start generates a new access token.
+
+| PM2 module setting | Default | Purpose |
+| --- | --- | --- |
+| `uiEnabled` | `true` | Run the setup UI in managed mode. Set to `false` to monitor saved managed settings without a UI. |
+| `uiPort` | `3100` | Local UI port, an integer from 1 to 65535. |
+| `statePath` | Empty | Override the managed settings file path; otherwise use `${PM2_HOME:-$HOME/.pm2}/pm2-notifier/ui-settings.json`. |
+| `configPath` | Empty | Select manual JSON configuration mode; the module UI is off in this mode. |
+| `envFile` | Empty | Optional dotenv file for manual configuration. |
+
+Managed settings contain configuration and credentials in one file, saved atomically with mode `600` under a private directory. Keep this file private and include it in protected backups. Stored URLs and header values are not returned to the browser; leaving a credential field empty retains its saved value. Removing a channel or header reference removes its unused saved credential.
+
+Saving validates settings and applies them to the running monitor. Applying settings reinitializes CPU and lifecycle observations; an enabled `notifyOnStart` can produce fresh startup alerts. If application fails, the UI reports the failure and keeps the saved settings available for correction. A new installation stays idle until valid settings are saved; managed mode with `uiEnabled: false` also stays idle when no saved settings exist.
 
 ## Files and environment variables
 
@@ -15,7 +33,7 @@ Configuration is strict JSON, up to 1 MiB. Unknown object fields, duplicate dest
 | Variables named by `urlEnv` | Webhook URL for each enabled destination. | Existing process environment takes precedence over dotenv values. |
 | Variables named by `headersEnv` | Complete HTTP header values, for example `Bearer ...`. | Existing process environment takes precedence over dotenv values. |
 
-PM2 module settings default to empty strings. Without a configuration path the runtime stays idle; the CLI requires a path. Use absolute paths and protect the env file with mode `600`, readable by the PM2 account. Never put webhook URLs or credentials in committed JSON. Disabled destinations do not require their environment variables.
+The `validate` and `test` CLI commands require a configuration path. A module with an explicit configuration path uses this manual mode. Use absolute paths and protect the env file with mode `600`, readable by the PM2 account. Never put webhook URLs or credentials in committed JSON. Disabled destinations do not require their environment variables.
 
 For the shipped configuration, the [README env-file setup](../README.md#2-configure-your-webhook) lists every destination's exact env entries and copyable values. Only `TEAMS_PRIMARY_WEBHOOK_URL` is required until you enable additional destinations.
 
@@ -77,7 +95,7 @@ Environment-variable names must match `[A-Za-z_][A-Za-z0-9_]*`. Required values 
 
 Requests always use `POST` and `Content-Type: application/json`. Custom header names must be valid HTTP tokens. `Host`, `Content-Length`, `Content-Type`, `Connection`, `Transfer-Encoding`, `Upgrade`, and `Proxy-*` cannot be overridden. Header values cannot contain newlines or other invalid control characters. Store a whole authorization value, including its scheme, in the referenced environment variable.
 
-Provider formats are Teams Adaptive Card 1.2 message envelopes, Slack incoming-webhook messages, and Discord webhook embeds. Each webhook selects its own destination channel. Register several destination objects for several channels or workspaces.
+Provider formats are Teams Adaptive Card 1.5 message envelopes, Slack incoming-webhook messages, and Discord webhook embeds. Each webhook selects its own destination channel. Register several destination objects for several channels or workspaces.
 
 ## Routes
 
@@ -172,8 +190,11 @@ node "$NOTIFIER_PACKAGE_DIR/dist/cli.js" --help
 ```
 
 ```text
+node "$NOTIFIER_PACKAGE_DIR/dist/cli.js" ui [--port PORT] [--state-file PATH] [--config PATH] [--env-file PATH]
 node "$NOTIFIER_PACKAGE_DIR/dist/cli.js" validate --config PATH [--env-file PATH]
 node "$NOTIFIER_PACKAGE_DIR/dist/cli.js" test --config PATH [--env-file PATH] [--destination ID]
 ```
+
+`ui` serves the local setup UI and monitors with its saved settings until interrupted. The default port is `3100`; `--state-file` overrides the managed settings path and requires a private parent directory. `--config` with an optional `--env-file` imports existing configuration into an unused managed settings file and starts monitoring immediately. An existing state file plus `--config` is rejected; omit `--config` to reopen it. UI edits and saves update the managed settings file, leaving the original JSON/env files unchanged. Do not run a standalone monitor alongside the installed module for the same PM2 daemon.
 
 `validate` parses JSON, validates routes, and resolves credentials without contacting PM2 or a webhook. `test` sends an actual info-severity `notifier.test` alert with host scope. Without `--destination`, normal routing applies; no match is an error. With `--destination`, the selected enabled destination is tested directly, bypassing its route filters. The CLI exits nonzero on invalid configuration or failed delivery. A successful HTTP response confirms endpoint acceptance, not that a downstream workflow posted to a channel.

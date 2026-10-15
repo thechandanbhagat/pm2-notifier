@@ -7,3 +7,13 @@ coverage/
 *.tgz
 notifier.config.json
 !examples/notifier.config.json
+
+# Local demo production and YouTube publishing assets
+/assets/demo/
+/assets/youtube/
+/scripts/render-demo.py
+
+# Local OS and Python cache files
+.DS_Store
+__pycache__/
+*.py[cod]

@@ -68,13 +68,19 @@ function requireEnv(name: string, environment: NodeJS.ProcessEnv): string {
   return value;
 }
 
-export function parseConfig(input: unknown, environment: NodeJS.ProcessEnv = process.env): Config {
+export type RawConfig = z.infer<typeof schema>;
+
+export function parseRawConfig(input: unknown): RawConfig {
   const parsed = schema.safeParse(input);
   if (!parsed.success) {
     const issues = parsed.error.issues.map(issue => `${issue.path.join('.') || 'config'}: ${issue.message}`);
     throw new Error(`Invalid configuration: ${issues.join('; ')}`);
   }
-  const config = parsed.data;
+  return parsed.data;
+}
+
+export function parseConfig(input: unknown, environment: NodeJS.ProcessEnv = process.env): Config {
+  const config = parseRawConfig(input);
   const ids = new Set(config.destinations.map(destination => destination.id));
   if (ids.size !== config.destinations.length) throw new Error('Destination IDs must be unique');
   const { cpu } = config.monitor;
