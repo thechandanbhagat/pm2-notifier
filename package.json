@@ -1,6 +1,6 @@
 {
   "name": "@thechandanbhagat/pm2-notifier",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Configurable PM2 CPU and lifecycle alerts for Teams, Slack, Discord and webhooks",
   "repository": {
     "type": "git",

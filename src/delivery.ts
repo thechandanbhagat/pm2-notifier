@@ -1,4 +1,4 @@
-import type { Alert, Config, DeliveryConfig, Destination, JsonValue, Logger, Route } from './types';
+import { DEFAULT_PM2_NAMESPACE, type Alert, type Config, type DeliveryConfig, type Destination, type JsonValue, type Logger, type Route } from './types';
 import { LOGO_DATA_URI } from './branding';
 
 const SLACK_TEXT_LIMIT = 2_900;
@@ -177,6 +177,13 @@ function routeMatches(route: Route, alert: Alert): boolean {
     if (!processMatches) return false;
   }
   if (alert.process && route.excludeProcesses.some(pattern => matches(pattern, alert.process!.name))) return false;
+  if (route.namespaces.length > 0) {
+    const namespaceMatches = alert.process
+      ? route.namespaces.some(pattern => matches(pattern, alert.process!.namespace ?? DEFAULT_PM2_NAMESPACE))
+      : route.namespaces.includes('*');
+    if (!namespaceMatches) return false;
+  }
+  if (alert.process && route.excludeNamespaces.some(pattern => matches(pattern, alert.process!.namespace ?? DEFAULT_PM2_NAMESPACE))) return false;
   return true;
 }
 

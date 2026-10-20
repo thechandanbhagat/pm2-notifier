@@ -105,14 +105,18 @@ Provider formats are Teams Adaptive Card 1.5 message envelopes, Slack incoming-w
 | `events` | `["*"]` | 1–100 supported event types/patterns. |
 | `processes` | `["*"]` | Include process-name patterns; at least one. |
 | `excludeProcesses` | `[]` | Process-name exclusions, taking precedence over includes. |
+| `namespaces` | `["*"]` | Include PM2 namespace patterns; at least one. Available since `0.2.0`. |
+| `excludeNamespaces` | `[]` | PM2 namespace exclusions, taking precedence over includes. Available since `0.2.0`. |
 | `severities` | `["info", "warning", "critical"]` | Nonempty list of these exact severities. |
 | `scope` | `"all"` | `"all"`, `"host"`, or `"process"`. |
 
 Supported events are `cpu.high`, `cpu.recovered`, `process.started`, `process.restarted`, `process.stopped`, `process.errored`, `process.deleted`, and `notifier.test`. Supported event patterns are exactly `*`, `cpu.*`, `process.*`, and `notifier.*`; arbitrary event wildcards fail validation.
 
-Filters in a route are combined with AND. Entries within a filter are alternatives. Host alerts have no process name and match the process filter only when it contains `"*"`; process-specific include patterns exclude host alerts. `excludeProcesses` applies only to process alerts. Use `scope: "process"` when the route should never receive host alerts. Several routes may match; each enabled destination receives the alert once, even when repeated across routes. Separate destination IDs pointing at the same URL are separate deliveries.
+Filters in a route are combined with AND. Entries within a filter are alternatives. Namespace patterns use the same case-sensitive `*` and `?` globs and length/count limits as process patterns. PM2 applications without an assigned namespace use `default`.
 
-`processes` matches PM2 process names, not PM2's `namespace` field. For a complete process-name-prefix mapping to several channels, use the [channel-group sample](../examples/channel-groups.config.json) and its [setup instructions](../README.md#route-application-groups-to-channel-groups).
+Host alerts have no process name or namespace. Each include filter must contain `"*"` to match a host alert; a process-specific name or namespace excludes host alerts. `excludeProcesses` and `excludeNamespaces` apply only to process alerts. Use `scope: "process"` when the route should never receive host alerts. Several routes may match; each enabled destination receives the alert once, even when repeated across routes. Separate destination IDs pointing at the same URL are separate deliveries.
+
+`processes` matches PM2 process names; `namespaces` matches PM2's native namespace field. For complete examples, use the [process-name-prefix sample](../examples/channel-groups.config.json) or the [namespace sample](../examples/namespace-channels.config.json). The [namespace setup instructions](../README.md#route-pm2-namespaces-to-channel-groups) include PM2 ecosystem configuration and channel mappings.
 
 Example route for restart/stop/error alerts from API workers:
 
@@ -165,7 +169,7 @@ The default generic alert shape is:
 }
 ```
 
-`environment` is omitted when not configured. Host alerts omit `process`; a process `pid` may be unavailable. CPU details include `scope`, `cpu`, `threshold`, and `durationMs`; recovery adds `recoveryThreshold` and `recoveryDurationMs`. Lifecycle details include `scope`, `status`, `restarts`, `exitCode` (possibly null), and `reason`. `notifier.test` has `details.scope: "host"`.
+`environment` is omitted when not configured. Process alerts include `process.namespace` since `0.2.0`; generic templates can reference `{{process.namespace}}`. Host alerts omit `process`; a process `pid` may be unavailable. CPU details include `scope`, `cpu`, `threshold`, and `durationMs`; recovery adds `recoveryThreshold` and `recoveryDurationMs`. Lifecycle details include `scope`, `status`, `restarts`, `exitCode` (possibly null), and `reason`. `notifier.test` has `details.scope: "host"`.
 
 ## Delivery
 

@@ -198,7 +198,7 @@ test('test notification reaches only the explicit saved channel, independent of 
       { id: 'second', format: 'generic', urlEnv: 'SECOND', allowInsecureHttp: true },
       { id: 'disabled', format: 'generic', urlEnv: 'NONE', enabled: false },
     ],
-    routes: [{ destinations: ['second'], events: ['cpu.high'], processes: ['worker'], scope: 'process', severities: ['critical'] }],
+    routes: [{ destinations: ['second'], events: ['cpu.high'], processes: ['worker'], namespaces: ['payments'], excludeNamespaces: ['*'], scope: 'process', severities: ['critical'] }],
   };
   const app = await fixture({ initial: { config, secrets: { FIRST: `${url}/first`, SECOND: `${url}/second`, AUTH: 'Bearer local-test' } } });
   try {

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — Unreleased
 
 - Default the setup UI to dark mode, with a persistent light-mode toggle and README screenshots of both themes.
 - Add a local setup UI on port 3100 for notification channels, alert workflows, monitoring settings, and explicit channel tests.
@@ -8,6 +8,10 @@
 - Save managed settings and credentials privately outside the installed package and apply changes without restarting the module.
 - Add `pm2-notifier ui` and `npm run ui`, with configurable port and managed state path.
 - Fix PM2 event-bus cleanup and wait for disconnect completion so applying workflows can safely reconnect the monitor.
+- Route process alerts by PM2 namespace with `namespaces` and `excludeNamespaces` filters.
+- Preserve namespaces in CPU and lifecycle alerts, including applications sharing a process name.
+- Include configuration examples for namespace and process-name groups sent to multiple channels.
+- Retain existing process-name routes and send host alerts through separate routes when desired.
 
 ## 0.1.0 — 2026-10-13
 

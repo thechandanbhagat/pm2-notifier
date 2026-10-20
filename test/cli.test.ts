@@ -33,9 +33,13 @@ test('CLI validates without sending and test sends to loopback only; explicit de
     await runCli(['test', '--config', file, '--destination', 'local'], logger);
     assert.equal(received.length, 1);
     assert.equal((received[0] as { type: string }).type, 'notifier.test');
+    writeFileSync(file, JSON.stringify({ destinations: [{ id: 'local', format: 'generic', urlEnv: variable, allowInsecureHttp: true }], routes: [{ destinations: ['local'], namespaces: ['payments'], excludeNamespaces: ['*'] }] }));
+    await assert.rejects(runCli(['test', '--config', file], logger), /No enabled destination matches/);
+    await runCli(['test', '--config', file, '--destination', 'local'], logger);
+    assert.equal(received.length, 2);
     writeFileSync(file, JSON.stringify({ destinations: [{ id: 'local', format: 'generic', urlEnv: variable, allowInsecureHttp: true }], routes: [{ destinations: ['local'] }] }));
     await runCli(['test', '--config', file], logger);
-    assert.equal(received.length, 2);
+    assert.equal(received.length, 3);
     await assert.rejects(runCli(['test', '--config', file, '--destination', 'missing'], logger), /does not exist/);
     await assert.rejects(runCli(['validate', '--destination', 'local'], logger), /only supported/);
     await assert.rejects(runCli([], logger), /Usage/);

@@ -167,7 +167,7 @@ export async function startWebServer(options: WebServerOptions): Promise<{ url: 
             const dispatcher = createDispatcher({
               delivery: { ...config.delivery, batchIntervalMs: 0, maxAttempts: 1, timeoutMs: Math.min(config.delivery.timeoutMs, MAX_TEST_TIMEOUT_MS) },
               destinations: [destination],
-              routes: [{ destinations: [destination.id], events: ['notifier.test'], processes: ['*'], excludeProcesses: [], severities: ['info'], scope: 'all' }],
+              routes: [{ destinations: [destination.id], events: ['notifier.test'], processes: ['*'], excludeProcesses: [], namespaces: ['*'], excludeNamespaces: [], severities: ['info'], scope: 'all' }],
             }, options.logger, {
               fetch: (url, init) => fetch(url, {
                 ...init,

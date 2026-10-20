@@ -22,6 +22,9 @@ const HTTP_OK = 200;
 const HTTP_INTERNAL_SERVER_ERROR = 500;
 const TEMP_PREFIX = 'pm2-notifier-smoke-';
 const FIXTURE_NAME = 'notifier-smoke-fixture';
+const FIXTURE_NAMESPACE = 'payments-smoke';
+const OTHER_NAMESPACE = 'orders-smoke';
+const IGNORED_FIXTURE_NAME = `${FIXTURE_NAME}-other-namespace`;
 const BUNDLED_DEPENDENCY_NAMES = ['js-yaml', 'basic-ftp', 'ip-address'] as const;
 const execute = promisify(execFile);
 const pause = (milliseconds: number) => new Promise<void>(done => setTimeout(done, milliseconds));
@@ -130,6 +133,8 @@ async function main(): Promise<void> {
     const matching = alerts.filter(alert => alert.type === type && alert.process?.name === name);
     assert.equal(matching.length, 1, `Expected one ${type} notification`);
     assert.equal(matching[0].process?.name, name);
+    assert.equal(matching[0].process?.namespace, FIXTURE_NAMESPACE);
+    assert.ok(alerts.every(alert => alert.process?.namespace === FIXTURE_NAMESPACE), 'A route delivered an alert from another PM2 namespace');
     assert.equal(typeof matching[0].id, 'string');
     process.stdout.write(`PASS ${type} ${name}\n`);
   };
@@ -145,7 +150,7 @@ async function main(): Promise<void> {
         lifecycle: { settleMs: 750, notifyOnStart: false },
       },
       destinations: [{ id: 'loopback', format: 'generic', urlEnv: 'SMOKE_WEBHOOK_URL', allowInsecureHttp: true }],
-      routes: [{ events: ['*'], destinations: ['loopback'] }],
+      routes: [{ events: ['*'], scope: 'process', namespaces: [FIXTURE_NAMESPACE], destinations: ['loopback'] }],
     }));
     await writeFile(envPath, `SMOKE_WEBHOOK_URL=http://127.0.0.1:${address.port}/alerts\n`);
     await writeFile(controlPath, 'idle');
@@ -163,7 +168,8 @@ async function main(): Promise<void> {
       '}, intervalMs);',
     ].join('\n'));
     daemonStarted = true;
-    await pm2('start', fixturePath, '--name', FIXTURE_NAME);
+    await pm2('start', fixturePath, '--name', FIXTURE_NAME, '--namespace', FIXTURE_NAMESPACE);
+    await pm2('start', fixturePath, '--name', IGNORED_FIXTURE_NAME, '--namespace', OTHER_NAMESPACE, '--no-autorestart');
     const { stdout: packOutput } = await execute('npm', ['pack', '--pack-destination', directory, '--ignore-scripts', '--json'], {
       cwd: packageRoot, env: environment, timeout: COMMAND_TIMEOUT_MS, maxBuffer: COMMAND_MAX_BUFFER_BYTES,
     });
@@ -239,10 +245,12 @@ async function main(): Promise<void> {
     process.stdout.write('PASS first-run UI, hot-applied workflow, live PM2 event, channel test, private storage, and managed restart\n');
     await pm2('set', `${packageName}:envFile`, envPath);
     await pm2('set', `${packageName}:configPath`, configPath);
-    const installed = JSON.parse(await pm2('jlist')) as { name: string; pm2_env: { pm_exec_path: string; watch: boolean; status: string; pm_out_log_path: string; pm_err_log_path: string } }[];
+    const installed = JSON.parse(await pm2('jlist')) as { name: string; pm2_env: { namespace: string; pm_exec_path: string; watch: boolean; status: string; pm_out_log_path: string; pm_err_log_path: string } }[];
     process.stdout.write(`${JSON.stringify(installed.map(entry => ({ name: entry.name, script: entry.pm2_env.pm_exec_path, watch: entry.pm2_env.watch, status: entry.pm2_env.status, log: entry.pm2_env.pm_out_log_path })))}\n`);
     const module = installed.find(entry => entry.name === packageName);
     assert.ok(module);
+    assert.equal(installed.find(entry => entry.name === FIXTURE_NAME)?.pm2_env.namespace, FIXTURE_NAMESPACE);
+    assert.equal(installed.find(entry => entry.name === IGNORED_FIXTURE_NAME)?.pm2_env.namespace, OTHER_NAMESPACE);
     assert.equal(module.pm2_env.pm_exec_path, join(home, 'modules', packageName, 'node_modules', packageName, 'dist', 'index.js'));
     assert.equal(module.pm2_env.watch, false);
     for (const dependencyName of BUNDLED_DEPENDENCY_NAMES) {
@@ -273,10 +281,19 @@ async function main(): Promise<void> {
     assert.deepEqual(errors, []);
     assert.deepEqual(alerts.map(alert => alert.type), ['cpu.high', 'cpu.recovered', 'process.restarted', 'process.stopped', 'process.deleted']);
     const crashName = `${FIXTURE_NAME}-crash`;
-    await pm2('start', fixturePath, '--name', crashName, '--no-autorestart');
+    await pm2('start', fixturePath, '--name', crashName, '--namespace', FIXTURE_NAMESPACE, '--no-autorestart');
     await pause(DUPLICATE_CHECK_MS);
     await writeFile(controlPath, 'crash');
     await waitForAlert('process.stopped', crashName);
+    await waitFor(async () => {
+      const processes = JSON.parse(await pm2('jlist')) as { name: string; pm2_env: { namespace: string; exit_code?: number } }[];
+      const ignoredFixture = processes.find(entry => entry.name === IGNORED_FIXTURE_NAME);
+      assert.equal(ignoredFixture?.pm2_env.namespace, OTHER_NAMESPACE);
+      return ignoredFixture.pm2_env.exit_code === 42;
+    }, 'excluded namespace fixture crash');
+    await pause(DUPLICATE_CHECK_MS);
+    assert.ok(alerts.every(alert => alert.process?.namespace === FIXTURE_NAMESPACE), 'A route delivered an alert from another PM2 namespace');
+    assert.equal(alerts.some(alert => alert.process?.name === IGNORED_FIXTURE_NAME), false);
     const crashAlert = alerts.find(alert => alert.type === 'process.stopped' && alert.process?.name === crashName);
     assert.equal(crashAlert?.details.exitCode, 42);
     assert.equal(crashAlert?.details.reason, 'PM2 reported exit code 42.');

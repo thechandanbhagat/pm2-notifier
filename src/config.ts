@@ -57,6 +57,7 @@ const schema = z.object({
     destinations: z.array(z.string().min(1)).min(1).max(MAX_DESTINATIONS),
     events: patterns.min(1).default(['*']), processes: patterns.min(1).default(['*']),
     excludeProcesses: patterns.default([]),
+    namespaces: patterns.min(1).default(['*']), excludeNamespaces: patterns.default([]),
     severities: z.array(z.enum(['info', 'warning', 'critical'])).min(1).default(['info', 'warning', 'critical']),
     scope: z.enum(['all', 'host', 'process']).default('all'),
   }).strict()).min(1).max(MAX_ROUTES),

@@ -2,6 +2,7 @@ import pm2 = require('pm2');
 import { cpus, type CpuInfo } from 'node:os';
 import { createMonitor } from './monitor';
 import { createDispatcher } from './delivery';
+import { DEFAULT_PM2_NAMESPACE } from './types';
 import type { Config, Logger, ProcessSnapshot } from './types';
 
 const RPC_TIMEOUT_MS = 10_000;
@@ -41,12 +42,14 @@ export function normalizeProcess(input: unknown): ProcessSnapshot | undefined {
   const env = Object.keys(record(value.pm2_env)).length ? record(value.pm2_env) : value;
   const pmId = finite(value.pm_id ?? env.pm_id);
   const name = value.name ?? env.name;
+  const namespace = env.namespace === undefined ? DEFAULT_PM2_NAMESPACE : env.namespace;
   if (pmId === undefined || !Number.isSafeInteger(pmId) || typeof name !== 'string' || !name) return undefined;
+  if (typeof namespace !== 'string' || namespace.trim().length === 0) return undefined;
   const restarts = env.restart_time === undefined ? 0 : finite(env.restart_time);
   if (restarts === undefined || !Number.isSafeInteger(restarts)) return undefined;
   const exitCode = env.exit_code;
   return {
-    pmId, name, pid: finite(value.pid ?? env.pid),
+    pmId, name, namespace, pid: finite(value.pid ?? env.pid),
     status: typeof env.status === 'string' ? env.status : 'unknown',
     cpu: finite(record(value.monit).cpu),
     restarts,

@@ -1,4 +1,5 @@
 export const EVENT_TYPES = ['cpu.high', 'cpu.recovered', 'process.started', 'process.restarted', 'process.stopped', 'process.errored', 'process.deleted', 'notifier.test'] as const;
+export const DEFAULT_PM2_NAMESPACE = 'default';
 export type EventType = typeof EVENT_TYPES[number];
 export type Severity = 'info' | 'warning' | 'critical';
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
@@ -10,7 +11,7 @@ export interface Alert {
   readonly timestamp: string;
   readonly hostname: string;
   readonly environment?: string;
-  readonly process?: { readonly name: string; readonly pmId: number; readonly pid?: number };
+  readonly process?: { readonly name: string; readonly pmId: number; readonly pid?: number; readonly namespace?: string };
   readonly message: string;
   readonly details: Readonly<Record<string, string | number | boolean | null>>;
 }
@@ -36,6 +37,8 @@ export interface Route {
   readonly events: readonly string[];
   readonly processes: readonly string[];
   readonly excludeProcesses: readonly string[];
+  readonly namespaces: readonly string[];
+  readonly excludeNamespaces: readonly string[];
   readonly severities: readonly Severity[];
   readonly scope: 'all' | 'host' | 'process';
 }
@@ -63,6 +66,7 @@ export type Logger = (level: 'info' | 'warn' | 'error', message: string, fields?
 export interface ProcessSnapshot {
   readonly pmId: number;
   readonly name: string;
+  readonly namespace?: string;
   readonly pid?: number;
   readonly status: string;
   readonly cpu?: number;

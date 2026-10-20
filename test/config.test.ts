@@ -7,6 +7,8 @@ import { parseConfig, loadConfig } from '../src/config';
 
 const input = { destinations: [{ id: 'ops', format: 'teams', urlEnv: 'HOOK' }], routes: [{ destinations: ['ops'] }] };
 const env = { HOOK: 'https://example.com/private-hook' };
+const MAX_ROUTE_PATTERNS = 100;
+const MAX_ROUTE_PATTERN_LENGTH = 200;
 
 test('configuration defaults and environment resolution are usable', () => {
   const config = parseConfig(input, env);
@@ -14,6 +16,8 @@ test('configuration defaults and environment resolution are usable', () => {
   assert.equal(config.monitor.cpu.scope, 'both');
   assert.equal(config.destinations[0].url, env.HOOK);
   assert.deepEqual(config.routes[0].processes, ['*']);
+  assert.deepEqual(config.routes[0].namespaces, ['*']);
+  assert.deepEqual(config.routes[0].excludeNamespaces, []);
   assert.equal(config.delivery.maxQueueSize, 500);
   assert.equal(config.delivery.batchIntervalMs, 30_000);
 });
@@ -75,4 +79,26 @@ test('destination count accepts the maximum and rejects overflow', () => {
   const routes = [{ destinations: ['channel-0'] }];
   assert.equal(parseConfig({ destinations, routes }, {}).destinations.length, 100);
   assert.throws(() => parseConfig({ destinations: [...destinations, { ...destinations[0], id: 'overflow' }], routes }, {}), /Invalid configuration/);
+});
+
+test('namespace route patterns preserve exact and glob values, accepting maximum count and length', () => {
+  const patterns = Array.from({ length: MAX_ROUTE_PATTERNS }, () => 'n'.repeat(MAX_ROUTE_PATTERN_LENGTH));
+  const config = parseConfig({ ...input, routes: [{ destinations: ['ops'], namespaces: patterns, excludeNamespaces: patterns }] }, env);
+  assert.deepEqual(config.routes[0].namespaces, patterns);
+  assert.deepEqual(config.routes[0].excludeNamespaces, patterns);
+  const values = ['payments', 'orders-*', 'preview-?', 'namespace.v1+[blue]'];
+  const custom = parseConfig({ ...input, routes: [{ destinations: ['ops'], namespaces: values, excludeNamespaces: ['sandbox-*'] }] }, env);
+  assert.deepEqual(custom.routes[0].namespaces, values);
+  assert.deepEqual(custom.routes[0].excludeNamespaces, ['sandbox-*']);
+  assert.deepEqual(parseConfig({ ...input, routes: [{ destinations: ['ops'], excludeNamespaces: [] }] }, env).routes[0].excludeNamespaces, []);
+});
+
+test('namespace route patterns reject null, empty patterns and count or length overflow', () => {
+  for (const field of ['namespaces', 'excludeNamespaces']) {
+    const invalid = [null, 'payments', [null], [''], ['n'.repeat(MAX_ROUTE_PATTERN_LENGTH + 1)], Array.from({ length: MAX_ROUTE_PATTERNS + 1 }, () => 'payments')];
+    for (const value of invalid) {
+      assert.throws(() => parseConfig({ ...input, routes: [{ destinations: ['ops'], [field]: value }] }, env), new RegExp(`routes\\.0\\.${field}`));
+    }
+  }
+  assert.throws(() => parseConfig({ ...input, routes: [{ destinations: ['ops'], namespaces: [] }] }, env), /routes\.0\.namespaces/);
 });

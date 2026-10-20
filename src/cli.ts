@@ -48,7 +48,7 @@ export async function runCli(args: string[], logger: Logger): Promise<Applicatio
   if (values.destination) {
     const target = config.destinations.find(destination => destination.id === values.destination && destination.enabled);
     if (!target) throw new Error('Requested destination does not exist or is disabled');
-    deliveryConfig = { ...config, routes: [{ destinations: [target.id], events: ['*'], processes: ['*'], excludeProcesses: [], severities: ['info', 'warning', 'critical'], scope: 'all' }] };
+    deliveryConfig = { ...config, routes: [{ destinations: [target.id], events: ['*'], processes: ['*'], excludeProcesses: [], namespaces: ['*'], excludeNamespaces: [], severities: ['info', 'warning', 'critical'], scope: 'all' }] };
   }
   if (!routeDestinations(deliveryConfig, alert).length) throw new Error('No enabled destination matches notifier.test; use --destination to test a specific destination');
   const dispatcher = createDispatcher(deliveryConfig, logger);

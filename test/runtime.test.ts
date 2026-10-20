@@ -4,19 +4,41 @@ import { EventEmitter } from 'node:events';
 import type { CpuInfo } from 'node:os';
 import { normalizeProcess, calculateHostCpu, startRuntime } from '../src/runtime';
 import { parseConfig } from '../src/config';
+import { DEFAULT_PM2_NAMESPACE } from '../src/types';
 
 const cpu = (user: number, idle: number): CpuInfo => ({ model: 'test', speed: 1, times: { user, idle, sys: 0, nice: 0, irq: 0 } });
 
 test('PM2 list entries and flattened bus packets normalize without forwarding environment or logs', () => {
-  const fields = { pm_id: 0, name: 'api', status: 'online', restart_time: 2, pm_uptime: 100, exit_code: 0, env: { SECRET: 'value' } };
+  const fields = { pm_id: 0, name: 'api', namespace: 'payments', status: 'online', restart_time: 2, pm_uptime: 100, exit_code: 0, env: { SECRET: 'value' }, log: 'SECRET' };
   const nested = normalizeProcess({ pid: 123, monit: { cpu: 100 }, pm2_env: fields });
   assert.equal(nested?.pmId, 0);
   assert.equal(nested?.cpu, 100);
   assert.equal(nested?.exitCode, 0);
+  assert.equal(nested?.namespace, 'payments');
   assert.ok(!JSON.stringify(nested).includes('SECRET'));
   assert.equal(normalizeProcess(fields)?.restarts, 2);
+  assert.equal(normalizeProcess(fields)?.namespace, 'payments');
   assert.equal(normalizeProcess({ ...fields, pmx_module: true })?.isModule, true);
   assert.equal(normalizeProcess({ ...fields, name: '@thechandanbhagat/pm2-notifier' })?.isModule, true);
+});
+
+test('PM2 normalization defaults only missing namespaces and preserves their literal identity', () => {
+  const fields = { pm_id: 1, name: 'api' };
+  const longNamespace = 'payments'.repeat(1_000);
+  for (const namespace of [undefined, DEFAULT_PM2_NAMESPACE, ' payments ', longNamespace]) {
+    const expected = namespace === undefined ? DEFAULT_PM2_NAMESPACE : namespace;
+    assert.equal(normalizeProcess({ ...fields, namespace })?.namespace, expected);
+    assert.equal(normalizeProcess({ pm2_env: { ...fields, namespace } })?.namespace, expected);
+  }
+  assert.equal(normalizeProcess({ ...fields, namespace: 'outer', pm2_env: { ...fields, namespace: 'inner' } })?.namespace, 'inner');
+});
+
+test('PM2 normalization rejects malformed namespaces on list and bus entries', () => {
+  const fields = { pm_id: 1, name: 'api' };
+  for (const namespace of [null, '', ' ', '\t\n', 0, false, [], {}]) {
+    assert.equal(normalizeProcess({ ...fields, namespace }), undefined);
+    assert.equal(normalizeProcess({ pm2_env: { ...fields, namespace } }), undefined);
+  }
 });
 
 test('PM2 invalid process identity and metric boundaries are handled explicitly', () => {

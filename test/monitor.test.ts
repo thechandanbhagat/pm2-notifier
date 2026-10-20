@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createMonitor } from '../src/monitor';
+import { DEFAULT_PM2_NAMESPACE } from '../src/types';
 import type { Config, MonitorConfig, ProcessSnapshot } from '../src/types';
 
 const SECOND_MS = 1_000;
@@ -31,12 +32,67 @@ test('CPU alerts at the exact duration boundary and once per incident for host a
   const alerts = subject.sample([process], 100, DURATION_MS);
   assert.deepEqual(alerts.map(alert => [alert.type, alert.details.scope]), [['cpu.high', 'process'], ['cpu.high', 'host']]);
   assert.equal(alerts[0].process?.name, 'api');
+  assert.equal(alerts[0].process?.namespace, DEFAULT_PM2_NAMESPACE);
   assert.equal(alerts[1].process, undefined);
   assert.equal(alerts[0].timestamp, new Date(DURATION_MS).toISOString());
   assert.equal(alerts[0].id, 'test-id');
   assert.equal(alerts[0].hostname, 'server-a');
   assert.equal(alerts[0].environment, 'test');
   assert.deepEqual(samples(subject, DURATION_MS + POLL_MS, 2 * DURATION_MS, 100, 100), []);
+});
+
+test('CPU high and recovery alerts preserve namespaces for identically named PM2 processes', () => {
+  const subject = monitor({ cpu: { ...config.monitor.cpu, durationMs: 0, recoveryDurationMs: 0 } });
+  const processes = [
+    { ...process, namespace: 'payments' },
+    { ...process, pmId: 2, namespace: 'orders' },
+  ];
+  const high = subject.sample(processes, 100, 0);
+  assert.deepEqual(high.map(alert => [alert.type, alert.process?.pmId, alert.process?.namespace]), [
+    ['cpu.high', 1, 'payments'], ['cpu.high', 2, 'orders'], ['cpu.high', undefined, undefined],
+  ]);
+  const recovered = subject.sample(processes.map(snapshot => ({ ...snapshot, cpu: 0 })), 0, POLL_MS);
+  assert.deepEqual(recovered.map(alert => [alert.type, alert.process?.pmId, alert.process?.namespace]), [
+    ['cpu.recovered', 1, 'payments'], ['cpu.recovered', 2, 'orders'], ['cpu.recovered', undefined, undefined],
+  ]);
+  assert.equal(high.at(-1)?.process, undefined);
+  assert.equal(recovered.at(-1)?.process, undefined);
+});
+
+test('lifecycle alerts preserve namespaces through bus events and polling deletion', () => {
+  const subject = monitor({
+    cpu: { ...config.monitor.cpu, enabled: false },
+    lifecycle: { ...config.monitor.lifecycle, notifyOnStart: true, settleMs: 0 },
+  });
+  const payments = { ...process, namespace: 'payments' };
+  const orders = { ...process, pmId: 2, namespace: 'orders' };
+  const started = subject.sample([payments, orders], undefined, 0);
+  assert.deepEqual(started.map(alert => [alert.type, alert.process?.pmId, alert.process?.namespace]), [
+    ['process.started', 1, 'payments'], ['process.started', 2, 'orders'],
+  ]);
+  const restarted = subject.event({ event: 'restart', process: { ...payments, restarts: 1 } }, 1);
+  assert.equal(restarted[0].process?.namespace, 'payments');
+  assert.equal(restarted[0].type, 'process.restarted');
+  const stopped = subject.event({ event: 'stop', process: { ...orders, status: 'stopped' } }, 2);
+  assert.equal(stopped[0].process?.namespace, 'orders');
+  assert.equal(stopped[0].type, 'process.stopped');
+  const deleted = subject.sample([{ ...payments, restarts: 1 }], undefined, POLL_MS);
+  assert.equal(deleted[0].process?.namespace, 'orders');
+  assert.equal(deleted[0].type, 'process.deleted');
+});
+
+test('terminal lifecycle events retain namespaces and legacy snapshots default to the PM2 namespace', () => {
+  for (const [event, status, type] of [
+    ['stop', 'stopped', 'process.stopped'], ['delete', 'deleted', 'process.deleted'], ['errored', 'errored', 'process.errored'],
+  ]) {
+    const subject = monitor({ lifecycle: { ...config.monitor.lifecycle, settleMs: 0 } });
+    subject.sample([{ ...process, namespace: 'payments' }], undefined, 0);
+    const alerts = subject.event({ event, process: { ...process, namespace: 'payments', status } }, 1);
+    assert.equal(alerts[0].type, type);
+    assert.equal(alerts[0].process?.namespace, 'payments');
+  }
+  const alerts = monitor({ lifecycle: { ...config.monitor.lifecycle, notifyOnStart: true } }).sample([process], undefined, 0);
+  assert.equal(alerts[0].process?.namespace, DEFAULT_PM2_NAMESPACE);
 });
 
 test('CPU dips below threshold interrupt continuous saturation', () => {
@@ -243,4 +299,9 @@ test('empty and unknown events are safe; malformed boundaries fail loudly', () =
   assert.throws(() => subject.sample([process], undefined, NaN), RangeError);
   assert.throws(() => subject.sample([process], undefined, Number.MAX_VALUE), RangeError);
   assert.throws(() => subject.sample([{ ...process, pmId: -1 }], undefined, 2), TypeError);
+  for (const namespace of [null, '', ' ', '\t\n', 0, false, [], {}]) {
+    const invalidProcess = { ...process, namespace } as unknown as ProcessSnapshot;
+    assert.throws(() => subject.sample([invalidProcess], undefined, 2), TypeError);
+    assert.throws(() => subject.event({ event: 'stop', process: invalidProcess }, 2), TypeError);
+  }
 });
