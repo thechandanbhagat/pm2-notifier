@@ -12,6 +12,7 @@
 - Preserve namespaces in CPU and lifecycle alerts, including applications sharing a process name.
 - Include configuration examples for namespace and process-name groups sent to multiple channels.
 - Retain existing process-name routes and send host alerts through separate routes when desired.
+- Update Zod and bundled follow-redirects to patched versions for collection validation and credential handling.
 
 ## 0.1.0 — 2026-10-13
 
