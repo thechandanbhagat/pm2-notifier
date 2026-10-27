@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 — Unreleased
+## 0.2.0 — 2026-10-27
 
 - Default the setup UI to dark mode, with a persistent light-mode toggle and README screenshots of both themes.
 - Add a local setup UI on port 3100 for notification channels, alert workflows, monitoring settings, and explicit channel tests.
